@@ -1,0 +1,22 @@
+{
+  "type": "record",
+  "name": "NotificationPushEvent",
+  "namespace": "com.rubymusic.realtime",
+  "doc": "Emitted by realtime-api-ms — instructs realtime-ws-ms to push notification to a connected user",
+  "fields": [
+    { "name": "notification_id", "type": "string" },
+    { "name": "recipient_id",    "type": "string" },
+    { "name": "actor_id",        "type": "string" },
+    { "name": "actor_username",  "type": "string" },
+    { "name": "actor_photo_url", "type": ["null", "string"], "default": null },
+    { "name": "type", "type": {
+        "type": "enum",
+        "name": "NotificationType",
+        "namespace": "com.rubymusic.realtime",
+        "symbols": ["COMMENT_REACTION", "MENTION", "FRIEND_REQUEST", "FRIEND_ACCEPTED"]
+    }},
+    { "name": "target_id",   "type": "string" },
+    { "name": "target_type", "type": "string" },
+    { "name": "timestamp",   "type": "long", "logicalType": "timestamp-millis" }
+  ]
+}

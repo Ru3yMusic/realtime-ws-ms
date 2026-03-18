@@ -1,0 +1,16 @@
+{
+  "type": "record",
+  "name": "CommentLikedEvent",
+  "namespace": "com.rubymusic.realtime",
+  "doc": "Emitted by realtime-ws-ms when a user likes a comment",
+  "fields": [
+    { "name": "comment_id",        "type": "string" },
+    { "name": "comment_author_id", "type": "string" },
+    { "name": "liker_id",          "type": "string" },
+    { "name": "liker_username",    "type": "string" },
+    { "name": "liker_photo_url",   "type": ["null", "string"], "default": null },
+    { "name": "song_id",           "type": "string" },
+    { "name": "station_id",        "type": "string" },
+    { "name": "timestamp",         "type": "long", "logicalType": "timestamp-millis" }
+  ]
+}

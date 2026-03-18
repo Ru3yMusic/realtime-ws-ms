@@ -1,0 +1,17 @@
+{
+  "type": "record",
+  "name": "CommentCreatedEvent",
+  "namespace": "com.rubymusic.realtime",
+  "doc": "Emitted by realtime-ws-ms when a user creates a comment in a station",
+  "fields": [
+    { "name": "comment_id",       "type": "string",                          "doc": "Client-generated UUID — idempotency key" },
+    { "name": "song_id",          "type": "string" },
+    { "name": "station_id",       "type": "string" },
+    { "name": "user_id",          "type": "string" },
+    { "name": "username",         "type": "string" },
+    { "name": "profile_photo_url","type": ["null", "string"], "default": null },
+    { "name": "content",          "type": "string" },
+    { "name": "mentions",         "type": { "type": "array", "items": "string" }, "default": [] },
+    { "name": "timestamp",        "type": "long", "logicalType": "timestamp-millis" }
+  ]
+}

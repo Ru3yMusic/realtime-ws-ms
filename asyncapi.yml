@@ -1,0 +1,224 @@
+asyncapi: '2.6.0'
+
+info:
+  title: RubyMusic Realtime WebSocket Service
+  version: '1.0.0'
+  description: |
+    Event-driven WebSocket microservice for real-time station comments,
+    user presence, and notification delivery.
+
+    **Authentication:** Pass `X-User-Id` in Socket.IO handshake headers
+    (forwarded by api-gateway from JWT claims).
+
+servers:
+  production:
+    url: 'ws://realtime-ws-ms:3001'
+    protocol: ws
+    description: WebSocket server
+  kafka:
+    url: 'kafka://localhost:9092'
+    protocol: kafka
+    description: Kafka broker for internal event streaming
+
+channels:
+
+  # ── WebSocket: Client → Server ──────────────────────────────────────────────
+
+  join_station:
+    description: Client joins a station room — establishes presence in Redis
+    subscribe:
+      operationId: onJoinStation
+      message:
+        $ref: '#/components/messages/JoinStationMessage'
+
+  leave_station:
+    description: Client explicitly leaves the current station room
+    subscribe:
+      operationId: onLeaveStation
+      message:
+        $ref: '#/components/messages/EmptyMessage'
+
+  send_comment:
+    description: |
+      Client publishes a comment. Gateway broadcasts immediately (optimistic)
+      then publishes realtime.comment.created to Kafka for persistence.
+    subscribe:
+      operationId: onSendComment
+      message:
+        $ref: '#/components/messages/SendCommentMessage'
+
+  ping_presence:
+    description: Heartbeat to refresh Redis TTL (300s). Send every 60s.
+    subscribe:
+      operationId: onPingPresence
+      message:
+        $ref: '#/components/messages/EmptyMessage'
+
+  # ── WebSocket: Server → Client ──────────────────────────────────────────────
+
+  new_comment:
+    description: Broadcast to all users in station:{stationId} room
+    publish:
+      operationId: emitNewComment
+      message:
+        $ref: '#/components/messages/CommentPayload'
+
+  notification:
+    description: Pushed to user:{userId} private room — from Kafka notification.push consumer
+    publish:
+      operationId: emitNotification
+      message:
+        $ref: '#/components/messages/NotificationPayload'
+
+  listener_count:
+    description: Broadcast to station room when listener count changes
+    publish:
+      operationId: emitListenerCount
+      message:
+        $ref: '#/components/messages/ListenerCountPayload'
+
+  pong_presence:
+    description: Response to ping_presence
+    publish:
+      operationId: emitPongPresence
+      message:
+        $ref: '#/components/messages/PongPresencePayload'
+
+  # ── Kafka Topics ─────────────────────────────────────────────────────────────
+
+  realtime.comment.created:
+    description: Produced when a comment is created — consumed by realtime-api-ms for persistence
+    bindings:
+      kafka:
+        topic: realtime.comment.created
+        partitions: 6
+        replicas: 1
+    publish:
+      operationId: publishCommentCreated
+      message:
+        $ref: '#/components/messages/KafkaCommentCreated'
+
+  realtime.comment.liked:
+    description: Produced when a comment is liked — consumed by realtime-api-ms
+    bindings:
+      kafka:
+        topic: realtime.comment.liked
+        partitions: 6
+        replicas: 1
+    publish:
+      operationId: publishCommentLiked
+      message:
+        $ref: '#/components/messages/KafkaCommentLiked'
+
+  realtime.notification.push:
+    description: Consumed from realtime-api-ms — triggers WS push to recipient
+    bindings:
+      kafka:
+        topic: realtime.notification.push
+        partitions: 6
+        replicas: 1
+    subscribe:
+      operationId: consumeNotificationPush
+      message:
+        $ref: '#/components/messages/KafkaNotificationPush'
+
+components:
+  messages:
+    JoinStationMessage:
+      payload:
+        type: object
+        required: [stationId, songId]
+        properties:
+          stationId:
+            type: string
+            format: uuid
+          songId:
+            type: string
+            format: uuid
+
+    EmptyMessage:
+      payload:
+        type: object
+
+    SendCommentMessage:
+      payload:
+        type: object
+        required: [commentId, songId, stationId, content]
+        properties:
+          commentId:
+            type: string
+            format: uuid
+            description: Client-generated UUID — idempotency key
+          songId:
+            type: string
+            format: uuid
+          stationId:
+            type: string
+            format: uuid
+          content:
+            type: string
+            maxLength: 500
+          mentions:
+            type: array
+            items:
+              type: string
+              format: uuid
+            default: []
+
+    CommentPayload:
+      payload:
+        type: object
+        properties:
+          commentId:    { type: string, format: uuid }
+          songId:       { type: string, format: uuid }
+          stationId:    { type: string, format: uuid }
+          userId:       { type: string, format: uuid }
+          username:     { type: string }
+          profilePhotoUrl: { type: string, nullable: true }
+          content:      { type: string }
+          mentions:     { type: array, items: { type: string } }
+          likesCount:   { type: integer, default: 0 }
+          createdAt:    { type: string, format: date-time }
+
+    NotificationPayload:
+      payload:
+        type: object
+        properties:
+          notificationId: { type: string }
+          actorId:        { type: string, format: uuid }
+          actorUsername:  { type: string }
+          actorPhotoUrl:  { type: string, nullable: true }
+          type:
+            type: string
+            enum: [COMMENT_REACTION, MENTION, FRIEND_REQUEST, FRIEND_ACCEPTED]
+          targetId:   { type: string }
+          targetType: { type: string }
+          createdAt:  { type: string, format: date-time }
+
+    ListenerCountPayload:
+      payload:
+        type: object
+        properties:
+          stationId: { type: string, format: uuid }
+          count:     { type: integer }
+
+    PongPresencePayload:
+      payload:
+        type: object
+        properties:
+          ok: { type: boolean }
+
+    KafkaCommentCreated:
+      schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+      payload:
+        $ref: './avro/schemas/realtime.comment.created.avsc'
+
+    KafkaCommentLiked:
+      schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+      payload:
+        $ref: './avro/schemas/realtime.comment.liked.avsc'
+
+    KafkaNotificationPush:
+      schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+      payload:
+        $ref: './avro/schemas/realtime.notification.push.avsc'
