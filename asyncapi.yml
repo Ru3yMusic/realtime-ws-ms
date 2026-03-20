@@ -16,14 +16,13 @@ info:
     email: francolitobo@gmail.com
   license:
     name: Private
-
-tags:
-  - name: websocket
-    description: Socket.IO WebSocket events
-  - name: kafka
-    description: Kafka async events (Avro)
-  - name: presence
-    description: User presence and heartbeat
+  tags:
+    - name: websocket
+      description: Socket.IO WebSocket events
+    - name: kafka
+      description: Kafka async events (Avro)
+    - name: presence
+      description: User presence and heartbeat
 
 servers:
   websocket:
@@ -273,7 +272,6 @@ components:
   messages:
 
     JoinStationMessage:
-      messageId: joinStationMessage
       name: JoinStationMessage
       title: Join Station
       contentType: application/json
@@ -290,7 +288,6 @@ components:
             format: uuid
 
     EmptyMessage:
-      messageId: emptyMessage
       name: EmptyMessage
       title: Empty (no payload)
       contentType: application/json
@@ -299,7 +296,6 @@ components:
         type: object
 
     SendCommentMessage:
-      messageId: sendCommentMessage
       name: SendCommentMessage
       title: Send Comment
       contentType: application/json
@@ -329,7 +325,6 @@ components:
             default: []
 
     CommentPayload:
-      messageId: commentPayload
       name: CommentPayload
       title: New Comment Broadcast
       contentType: application/json
@@ -349,7 +344,6 @@ components:
           createdAt:       { type: string, format: date-time }
 
     NotificationPayload:
-      messageId: notificationPayload
       name: NotificationPayload
       title: Notification Push
       contentType: application/json
@@ -370,7 +364,6 @@ components:
           createdAt:  { type: string, format: date-time }
 
     ListenerCountPayload:
-      messageId: listenerCountPayload
       name: ListenerCountPayload
       title: Listener Count
       contentType: application/json
@@ -382,7 +375,6 @@ components:
           count:     { type: integer }
 
     PongPresencePayload:
-      messageId: pongPresencePayload
       name: PongPresencePayload
       title: Pong Presence
       contentType: application/json
@@ -393,7 +385,6 @@ components:
           ok: { type: boolean }
 
     JoinedStationPayload:
-      messageId: joinedStationPayload
       name: JoinedStationPayload
       title: Joined Station Acknowledgement
       contentType: application/json
@@ -404,111 +395,114 @@ components:
           stationId:     { type: string, format: uuid }
           listenerCount: { type: integer }
 
+    # ── Avro messages: Multi Format Schema Object (3.0.0 syntax) ─────────────
+    # schemaFormat goes INSIDE payload, actual schema goes under payload.schema
+
     KafkaCommentCreated:
-      messageId: kafkaCommentCreated
       name: KafkaCommentCreated
       title: Comment Created (Avro)
-      schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
       payload:
-        type: record
-        name: CommentCreatedEvent
-        namespace: com.rubymusic.realtime
-        doc: Emitted by realtime-ws-ms when a user creates a comment in a station
-        fields:
-          - name: comment_id
-            type: string
-            doc: Client-generated UUID — idempotency key
-          - name: song_id
-            type: string
-          - name: station_id
-            type: string
-          - name: user_id
-            type: string
-          - name: username
-            type: string
-          - name: profile_photo_url
-            type:
-              - 'null'
-              - string
-            default: null
-          - name: content
-            type: string
-          - name: mentions
-            type:
-              type: array
-              items: string
-            default: []
-          - name: timestamp
-            type: long
-            logicalType: timestamp-millis
+        schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+        schema:
+          type: record
+          name: CommentCreatedEvent
+          namespace: com.rubymusic.realtime
+          doc: Emitted by realtime-ws-ms when a user creates a comment in a station
+          fields:
+            - name: comment_id
+              type: string
+              doc: Client-generated UUID — idempotency key
+            - name: song_id
+              type: string
+            - name: station_id
+              type: string
+            - name: user_id
+              type: string
+            - name: username
+              type: string
+            - name: profile_photo_url
+              type:
+                - 'null'
+                - string
+              default: null
+            - name: content
+              type: string
+            - name: mentions
+              type:
+                type: array
+                items: string
+              default: []
+            - name: timestamp
+              type: long
+              logicalType: timestamp-millis
 
     KafkaCommentLiked:
-      messageId: kafkaCommentLiked
       name: KafkaCommentLiked
       title: Comment Liked (Avro)
-      schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
       payload:
-        type: record
-        name: CommentLikedEvent
-        namespace: com.rubymusic.realtime
-        doc: Emitted by realtime-ws-ms when a user likes or unlikes a comment
-        fields:
-          - name: comment_id
-            type: string
-          - name: comment_author_id
-            type: string
-          - name: liker_id
-            type: string
-          - name: liker_username
-            type: string
-            doc: Prefixed with "UNLIKE:" when this is an unlike event
-          - name: liker_photo_url
-            type:
-              - 'null'
-              - string
-            default: null
-          - name: song_id
-            type: string
-          - name: station_id
-            type: string
-          - name: timestamp
-            type: long
-            logicalType: timestamp-millis
+        schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+        schema:
+          type: record
+          name: CommentLikedEvent
+          namespace: com.rubymusic.realtime
+          doc: Emitted by realtime-ws-ms when a user likes or unlikes a comment
+          fields:
+            - name: comment_id
+              type: string
+            - name: comment_author_id
+              type: string
+            - name: liker_id
+              type: string
+            - name: liker_username
+              type: string
+              doc: Prefixed with "UNLIKE:" when this is an unlike event
+            - name: liker_photo_url
+              type:
+                - 'null'
+                - string
+              default: null
+            - name: song_id
+              type: string
+            - name: station_id
+              type: string
+            - name: timestamp
+              type: long
+              logicalType: timestamp-millis
 
     KafkaNotificationPush:
-      messageId: kafkaNotificationPush
       name: KafkaNotificationPush
       title: Notification Push (Avro)
-      schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
       payload:
-        type: record
-        name: NotificationPushEvent
-        namespace: com.rubymusic.realtime
-        doc: Emitted by realtime-api-ms — instructs realtime-ws-ms to push a notification to a connected user
-        fields:
-          - name: notification_id
-            type: string
-          - name: recipient_id
-            type: string
-          - name: actor_id
-            type: string
-          - name: actor_username
-            type: string
-          - name: actor_photo_url
-            type:
-              - 'null'
-              - string
-            default: null
-          - name: type
-            type:
-              type: enum
-              name: NotificationType
-              namespace: com.rubymusic.realtime
-              symbols: [COMMENT_REACTION, MENTION, FRIEND_REQUEST, FRIEND_ACCEPTED]
-          - name: target_id
-            type: string
-          - name: target_type
-            type: string
-          - name: timestamp
-            type: long
-            logicalType: timestamp-millis
+        schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+        schema:
+          type: record
+          name: NotificationPushEvent
+          namespace: com.rubymusic.realtime
+          doc: Emitted by realtime-api-ms — instructs realtime-ws-ms to push a notification to a connected user
+          fields:
+            - name: notification_id
+              type: string
+            - name: recipient_id
+              type: string
+            - name: actor_id
+              type: string
+            - name: actor_username
+              type: string
+            - name: actor_photo_url
+              type:
+                - 'null'
+                - string
+              default: null
+            - name: type
+              type:
+                type: enum
+                name: NotificationType
+                namespace: com.rubymusic.realtime
+                symbols: [COMMENT_REACTION, MENTION, FRIEND_REQUEST, FRIEND_ACCEPTED]
+            - name: target_id
+              type: string
+            - name: target_type
+              type: string
+            - name: timestamp
+              type: long
+              logicalType: timestamp-millis
