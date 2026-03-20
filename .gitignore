@@ -1,0 +1,17 @@
+# Build
+dist/
+node_modules/
+
+# Generated AsyncAPI models — run `npm run generate:asyncapi` to recreate
+src/generated/
+
+# Docs (also generated)
+docs/asyncapi/
+
+# Env
+.env
+*.env.local
+
+# OS
+.DS_Store
+Thumbs.db

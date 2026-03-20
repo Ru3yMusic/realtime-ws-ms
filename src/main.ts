@@ -6,6 +6,8 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  // Health endpoint registered before globalPrefix so it stays at /health (used by Docker)
+  app.getHttpAdapter().get('/health', (_req, res) => res.json({ status: 'ok' }));
   app.setGlobalPrefix('api');
   app.enableCors();
 

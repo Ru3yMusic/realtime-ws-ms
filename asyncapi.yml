@@ -1,4 +1,6 @@
-asyncapi: '2.6.0'
+asyncapi: '3.0.0'
+id: 'urn:com:rubymusic:realtime-ws-ms'
+defaultContentType: application/json
 
 info:
   title: RubyMusic Realtime WebSocket Service
@@ -9,123 +11,274 @@ info:
 
     **Authentication:** Pass `X-User-Id` in Socket.IO handshake headers
     (forwarded by api-gateway from JWT claims).
+  contact:
+    name: RubyMusic Team
+    email: francolitobo@gmail.com
+  license:
+    name: Private
+
+tags:
+  - name: websocket
+    description: Socket.IO WebSocket events
+  - name: kafka
+    description: Kafka async events (Avro)
+  - name: presence
+    description: User presence and heartbeat
 
 servers:
-  production:
-    url: 'ws://realtime-ws-ms:3001'
+  websocket:
+    host: realtime-ws-ms:3001
     protocol: ws
-    description: WebSocket server
+    description: Socket.IO WebSocket server
   kafka:
-    url: 'kafka://localhost:9092'
+    host: kafka:9092
     protocol: kafka
     description: Kafka broker for internal event streaming
 
 channels:
 
-  # ── WebSocket: Client → Server ──────────────────────────────────────────────
+  # ── WebSocket: Client → Server ──────────────────────────────────────────
 
-  join_station:
+  joinStation:
+    address: join_station
     description: Client joins a station room — establishes presence in Redis
-    subscribe:
-      operationId: onJoinStation
-      message:
+    messages:
+      joinStationMessage:
         $ref: '#/components/messages/JoinStationMessage'
 
-  leave_station:
+  leaveStation:
+    address: leave_station
     description: Client explicitly leaves the current station room
-    subscribe:
-      operationId: onLeaveStation
-      message:
+    messages:
+      leaveStationMessage:
         $ref: '#/components/messages/EmptyMessage'
 
-  send_comment:
+  sendComment:
+    address: send_comment
     description: |
       Client publishes a comment. Gateway broadcasts immediately (optimistic)
       then publishes realtime.comment.created to Kafka for persistence.
-    subscribe:
-      operationId: onSendComment
-      message:
+    messages:
+      sendCommentMessage:
         $ref: '#/components/messages/SendCommentMessage'
 
-  ping_presence:
-    description: Heartbeat to refresh Redis TTL (300s). Send every 60s.
-    subscribe:
-      operationId: onPingPresence
-      message:
+  pingPresence:
+    address: ping_presence
+    description: Heartbeat to refresh Redis TTL (300 s). Send every 60 s.
+    messages:
+      pingPresenceMessage:
         $ref: '#/components/messages/EmptyMessage'
 
-  # ── WebSocket: Server → Client ──────────────────────────────────────────────
+  # ── WebSocket: Server → Client ──────────────────────────────────────────
 
-  new_comment:
+  newComment:
+    address: new_comment
     description: Broadcast to all users in station:{stationId} room
-    publish:
-      operationId: emitNewComment
-      message:
+    messages:
+      commentPayload:
         $ref: '#/components/messages/CommentPayload'
 
   notification:
-    description: Pushed to user:{userId} private room — from Kafka notification.push consumer
-    publish:
-      operationId: emitNotification
-      message:
+    address: notification
+    description: Pushed to user:{userId} private room — triggered by Kafka notification.push consumer
+    messages:
+      notificationPayload:
         $ref: '#/components/messages/NotificationPayload'
 
-  listener_count:
+  listenerCount:
+    address: listener_count
     description: Broadcast to station room when listener count changes
-    publish:
-      operationId: emitListenerCount
-      message:
+    messages:
+      listenerCountPayload:
         $ref: '#/components/messages/ListenerCountPayload'
 
-  pong_presence:
+  pongPresence:
+    address: pong_presence
     description: Response to ping_presence
-    publish:
-      operationId: emitPongPresence
-      message:
+    messages:
+      pongPresencePayload:
         $ref: '#/components/messages/PongPresencePayload'
 
-  # ── Kafka Topics ─────────────────────────────────────────────────────────────
+  joinedStation:
+    address: joined_station
+    description: Acknowledgement sent to the joining client after join_station
+    messages:
+      joinedStationPayload:
+        $ref: '#/components/messages/JoinedStationPayload'
 
-  realtime.comment.created:
+  # ── Kafka Topics ──────────────────────────────────────────────────────────
+
+  kafkaCommentCreated:
+    address: realtime.comment.created
     description: Produced when a comment is created — consumed by realtime-api-ms for persistence
     bindings:
       kafka:
         topic: realtime.comment.created
         partitions: 6
         replicas: 1
-    publish:
-      operationId: publishCommentCreated
-      message:
+        bindingVersion: '0.4.0'
+    messages:
+      kafkaCommentCreatedMessage:
         $ref: '#/components/messages/KafkaCommentCreated'
 
-  realtime.comment.liked:
-    description: Produced when a comment is liked — consumed by realtime-api-ms
+  kafkaCommentLiked:
+    address: realtime.comment.liked
+    description: Produced when a comment is liked or unliked — consumed by realtime-api-ms
     bindings:
       kafka:
         topic: realtime.comment.liked
         partitions: 6
         replicas: 1
-    publish:
-      operationId: publishCommentLiked
-      message:
+        bindingVersion: '0.4.0'
+    messages:
+      kafkaCommentLikedMessage:
         $ref: '#/components/messages/KafkaCommentLiked'
 
-  realtime.notification.push:
-    description: Consumed from realtime-api-ms — triggers WS push to recipient
+  kafkaNotificationPush:
+    address: realtime.notification.push
+    description: Consumed from realtime-api-ms — triggers WebSocket push to recipient
     bindings:
       kafka:
         topic: realtime.notification.push
         partitions: 6
         replicas: 1
-    subscribe:
-      operationId: consumeNotificationPush
-      message:
+        bindingVersion: '0.4.0'
+    messages:
+      kafkaNotificationPushMessage:
         $ref: '#/components/messages/KafkaNotificationPush'
+
+operations:
+
+  # ── Client → Server ──────────────────────────────────────────────────────
+
+  onJoinStation:
+    action: receive
+    channel:
+      $ref: '#/channels/joinStation'
+    messages:
+      - $ref: '#/channels/joinStation/messages/joinStationMessage'
+    tags:
+      - name: websocket
+      - name: presence
+
+  onLeaveStation:
+    action: receive
+    channel:
+      $ref: '#/channels/leaveStation'
+    messages:
+      - $ref: '#/channels/leaveStation/messages/leaveStationMessage'
+    tags:
+      - name: websocket
+      - name: presence
+
+  onSendComment:
+    action: receive
+    channel:
+      $ref: '#/channels/sendComment'
+    messages:
+      - $ref: '#/channels/sendComment/messages/sendCommentMessage'
+    tags:
+      - name: websocket
+
+  onPingPresence:
+    action: receive
+    channel:
+      $ref: '#/channels/pingPresence'
+    messages:
+      - $ref: '#/channels/pingPresence/messages/pingPresenceMessage'
+    tags:
+      - name: websocket
+      - name: presence
+
+  # ── Server → Client ──────────────────────────────────────────────────────
+
+  emitNewComment:
+    action: send
+    channel:
+      $ref: '#/channels/newComment'
+    messages:
+      - $ref: '#/channels/newComment/messages/commentPayload'
+    tags:
+      - name: websocket
+
+  emitNotification:
+    action: send
+    channel:
+      $ref: '#/channels/notification'
+    messages:
+      - $ref: '#/channels/notification/messages/notificationPayload'
+    tags:
+      - name: websocket
+
+  emitListenerCount:
+    action: send
+    channel:
+      $ref: '#/channels/listenerCount'
+    messages:
+      - $ref: '#/channels/listenerCount/messages/listenerCountPayload'
+    tags:
+      - name: websocket
+
+  emitPongPresence:
+    action: send
+    channel:
+      $ref: '#/channels/pongPresence'
+    messages:
+      - $ref: '#/channels/pongPresence/messages/pongPresencePayload'
+    tags:
+      - name: websocket
+      - name: presence
+
+  emitJoinedStation:
+    action: send
+    channel:
+      $ref: '#/channels/joinedStation'
+    messages:
+      - $ref: '#/channels/joinedStation/messages/joinedStationPayload'
+    tags:
+      - name: websocket
+
+  # ── Kafka: Produced ───────────────────────────────────────────────────────
+
+  publishCommentCreated:
+    action: send
+    channel:
+      $ref: '#/channels/kafkaCommentCreated'
+    messages:
+      - $ref: '#/channels/kafkaCommentCreated/messages/kafkaCommentCreatedMessage'
+    tags:
+      - name: kafka
+
+  publishCommentLiked:
+    action: send
+    channel:
+      $ref: '#/channels/kafkaCommentLiked'
+    messages:
+      - $ref: '#/channels/kafkaCommentLiked/messages/kafkaCommentLikedMessage'
+    tags:
+      - name: kafka
+
+  # ── Kafka: Consumed ───────────────────────────────────────────────────────
+
+  consumeNotificationPush:
+    action: receive
+    channel:
+      $ref: '#/channels/kafkaNotificationPush'
+    messages:
+      - $ref: '#/channels/kafkaNotificationPush/messages/kafkaNotificationPushMessage'
+    tags:
+      - name: kafka
 
 components:
   messages:
+
     JoinStationMessage:
+      messageId: joinStationMessage
+      name: JoinStationMessage
+      title: Join Station
+      contentType: application/json
       payload:
+        title: JoinStationPayload
         type: object
         required: [stationId, songId]
         properties:
@@ -137,11 +290,21 @@ components:
             format: uuid
 
     EmptyMessage:
+      messageId: emptyMessage
+      name: EmptyMessage
+      title: Empty (no payload)
+      contentType: application/json
       payload:
+        title: EmptyPayload
         type: object
 
     SendCommentMessage:
+      messageId: sendCommentMessage
+      name: SendCommentMessage
+      title: Send Comment
+      contentType: application/json
       payload:
+        title: SendCommentPayload
         type: object
         required: [commentId, songId, stationId, content]
         properties:
@@ -166,22 +329,32 @@ components:
             default: []
 
     CommentPayload:
+      messageId: commentPayload
+      name: CommentPayload
+      title: New Comment Broadcast
+      contentType: application/json
       payload:
+        title: WsCommentPayload
         type: object
         properties:
-          commentId:    { type: string, format: uuid }
-          songId:       { type: string, format: uuid }
-          stationId:    { type: string, format: uuid }
-          userId:       { type: string, format: uuid }
-          username:     { type: string }
+          commentId:       { type: string, format: uuid }
+          songId:          { type: string, format: uuid }
+          stationId:       { type: string, format: uuid }
+          userId:          { type: string, format: uuid }
+          username:        { type: string }
           profilePhotoUrl: { type: string, nullable: true }
-          content:      { type: string }
-          mentions:     { type: array, items: { type: string } }
-          likesCount:   { type: integer, default: 0 }
-          createdAt:    { type: string, format: date-time }
+          content:         { type: string }
+          mentions:        { type: array, items: { type: string } }
+          likesCount:      { type: integer, default: 0 }
+          createdAt:       { type: string, format: date-time }
 
     NotificationPayload:
+      messageId: notificationPayload
+      name: NotificationPayload
+      title: Notification Push
+      contentType: application/json
       payload:
+        title: WsNotificationPayload
         type: object
         properties:
           notificationId: { type: string }
@@ -189,6 +362,7 @@ components:
           actorUsername:  { type: string }
           actorPhotoUrl:  { type: string, nullable: true }
           type:
+            title: WsNotificationType
             type: string
             enum: [COMMENT_REACTION, MENTION, FRIEND_REQUEST, FRIEND_ACCEPTED]
           targetId:   { type: string }
@@ -196,29 +370,145 @@ components:
           createdAt:  { type: string, format: date-time }
 
     ListenerCountPayload:
+      messageId: listenerCountPayload
+      name: ListenerCountPayload
+      title: Listener Count
+      contentType: application/json
       payload:
+        title: WsListenerCountPayload
         type: object
         properties:
           stationId: { type: string, format: uuid }
           count:     { type: integer }
 
     PongPresencePayload:
+      messageId: pongPresencePayload
+      name: PongPresencePayload
+      title: Pong Presence
+      contentType: application/json
       payload:
+        title: WsPongPresencePayload
         type: object
         properties:
           ok: { type: boolean }
 
+    JoinedStationPayload:
+      messageId: joinedStationPayload
+      name: JoinedStationPayload
+      title: Joined Station Acknowledgement
+      contentType: application/json
+      payload:
+        title: WsJoinedStationPayload
+        type: object
+        properties:
+          stationId:     { type: string, format: uuid }
+          listenerCount: { type: integer }
+
     KafkaCommentCreated:
+      messageId: kafkaCommentCreated
+      name: KafkaCommentCreated
+      title: Comment Created (Avro)
       schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
       payload:
-        $ref: './avro/schemas/realtime.comment.created.avsc'
+        type: record
+        name: CommentCreatedEvent
+        namespace: com.rubymusic.realtime
+        doc: Emitted by realtime-ws-ms when a user creates a comment in a station
+        fields:
+          - name: comment_id
+            type: string
+            doc: Client-generated UUID — idempotency key
+          - name: song_id
+            type: string
+          - name: station_id
+            type: string
+          - name: user_id
+            type: string
+          - name: username
+            type: string
+          - name: profile_photo_url
+            type:
+              - 'null'
+              - string
+            default: null
+          - name: content
+            type: string
+          - name: mentions
+            type:
+              type: array
+              items: string
+            default: []
+          - name: timestamp
+            type: long
+            logicalType: timestamp-millis
 
     KafkaCommentLiked:
+      messageId: kafkaCommentLiked
+      name: KafkaCommentLiked
+      title: Comment Liked (Avro)
       schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
       payload:
-        $ref: './avro/schemas/realtime.comment.liked.avsc'
+        type: record
+        name: CommentLikedEvent
+        namespace: com.rubymusic.realtime
+        doc: Emitted by realtime-ws-ms when a user likes or unlikes a comment
+        fields:
+          - name: comment_id
+            type: string
+          - name: comment_author_id
+            type: string
+          - name: liker_id
+            type: string
+          - name: liker_username
+            type: string
+            doc: Prefixed with "UNLIKE:" when this is an unlike event
+          - name: liker_photo_url
+            type:
+              - 'null'
+              - string
+            default: null
+          - name: song_id
+            type: string
+          - name: station_id
+            type: string
+          - name: timestamp
+            type: long
+            logicalType: timestamp-millis
 
     KafkaNotificationPush:
+      messageId: kafkaNotificationPush
+      name: KafkaNotificationPush
+      title: Notification Push (Avro)
       schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
       payload:
-        $ref: './avro/schemas/realtime.notification.push.avsc'
+        type: record
+        name: NotificationPushEvent
+        namespace: com.rubymusic.realtime
+        doc: Emitted by realtime-api-ms — instructs realtime-ws-ms to push a notification to a connected user
+        fields:
+          - name: notification_id
+            type: string
+          - name: recipient_id
+            type: string
+          - name: actor_id
+            type: string
+          - name: actor_username
+            type: string
+          - name: actor_photo_url
+            type:
+              - 'null'
+              - string
+            default: null
+          - name: type
+            type:
+              type: enum
+              name: NotificationType
+              namespace: com.rubymusic.realtime
+              symbols: [COMMENT_REACTION, MENTION, FRIEND_REQUEST, FRIEND_ACCEPTED]
+          - name: target_id
+            type: string
+          - name: target_type
+            type: string
+          - name: timestamp
+            type: long
+            logicalType: timestamp-millis
