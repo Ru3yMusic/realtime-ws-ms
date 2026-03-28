@@ -1,4 +1,4 @@
-import { Controller, Get, Headers, Param } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Post } from '@nestjs/common';
 import { PresenceService } from './presence.service';
 
 @Controller('presence')
@@ -24,5 +24,15 @@ export class PresenceController {
       this.presence.getListeners(stationId),
     ]);
     return { stationId, count, listeners };
+  }
+
+  /**
+   * Bulk presence lookup for the "Chat estación" screen.
+   * Body: { userIds: string[] }
+   * Returns: { [userId]: { online: boolean, station_id?, song_id?, last_active? } }
+   */
+  @Post('users/bulk')
+  async getBulkPresence(@Body('userIds') userIds: string[]) {
+    return this.presence.getBulkPresence(userIds ?? []);
   }
 }

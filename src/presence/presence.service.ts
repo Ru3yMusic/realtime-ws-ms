@@ -37,4 +37,19 @@ export class PresenceService {
   async getListeners(stationId: string): Promise<string[]> {
     return this.redis.getActiveListeners(stationId);
   }
+
+  /**
+   * Returns presence data for multiple user IDs in one Redis pipeline call.
+   * Used by the "Chat estación" screen to show which friends are listening and where.
+   */
+  async getBulkPresence(
+    userIds: string[],
+  ): Promise<Record<string, { online: boolean; station_id?: string; song_id?: string; last_active?: string }>> {
+    const raw = await this.redis.getManyPresence(userIds);
+    const result: Record<string, any> = {};
+    for (const [uid, data] of Object.entries(raw)) {
+      result[uid] = data ? { online: true, ...data } : { online: false };
+    }
+    return result;
+  }
 }

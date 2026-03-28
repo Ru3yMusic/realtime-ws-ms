@@ -49,6 +49,26 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     await this.client.expire(`presence:${userId}`, PRESENCE_TTL_S);
   }
 
+  /**
+   * Fetches presence data for multiple users in a single Redis pipeline round-trip.
+   * Returns a map of userId → presence data (null if offline).
+   */
+  async getManyPresence(
+    userIds: string[],
+  ): Promise<Record<string, Record<string, string> | null>> {
+    if (userIds.length === 0) return {};
+    const pipeline = this.client.pipeline();
+    userIds.forEach((id) => pipeline.hgetall(`presence:${id}`));
+    const results = await pipeline.exec();
+    const output: Record<string, Record<string, string> | null> = {};
+    results?.forEach(([err, data], i) => {
+      const uid = userIds[i];
+      const map = data as Record<string, string>;
+      output[uid] = !err && map && Object.keys(map).length > 0 ? map : null;
+    });
+    return output;
+  }
+
   // ── Station Listeners ─────────────────────────────────────────────────────
   // Sorted set: station:{stationId}:listeners → score = last_active epoch ms
   // Membership is TTL-equivalent: members with score < (now - 300s) are stale.
