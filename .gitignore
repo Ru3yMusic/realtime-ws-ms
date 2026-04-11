@@ -9,7 +9,7 @@ src/generated/
 docs/asyncapi/
 
 # Env
-# .env
+.env
 # *.env.local
 
 # OS

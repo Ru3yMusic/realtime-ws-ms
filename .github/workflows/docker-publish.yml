@@ -1,0 +1,26 @@
+name: CI/CD Discovery Service
+
+on:
+  push:
+    branches: ["main"] # Se activa al subir cambios a main
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+
+      - name: Login en Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Construir y subir imagen
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          # Reemplaza 'discovery-service' por el nombre exacto de tu repo en Docker Hub
+          tags: darfelio/rbm-realtime-ws:latest
