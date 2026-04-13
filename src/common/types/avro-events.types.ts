@@ -12,6 +12,7 @@ export const TOPICS = {
   COMMENT_CREATED:    'realtime.comment.created',
   COMMENT_LIKED:      'realtime.comment.liked',
   NOTIFICATION_PUSH:  'realtime.notification.push',
+  CHAT_MESSAGE:       'realtime.chat.message',
 } as const;
 
 export type Topic = (typeof TOPICS)[keyof typeof TOPICS];
@@ -41,6 +42,8 @@ export interface CommentLikedEvent {
   song_id:           string;
   station_id:        string;
   timestamp:         number;
+  /** Explicit discriminator: 'like' | 'unlike'. Replaces the UNLIKE: prefix hack. */
+  action:            'like' | 'unlike';
 }
 
 /** realtime.notification.push — produced by api-ms, consumed by ws-ms */
@@ -113,4 +116,44 @@ export interface WsNotificationPayload {
 export interface WsListenerCountPayload {
   stationId: string;
   count:     number;
+}
+
+// ── Chat Events ───────────────────────────────────────────────────────────────
+
+/** realtime.chat.message — produced by ws-ms, consumed by api-ms for persistence */
+export interface ChatMessageEvent {
+  message_id:        string;
+  station_id:        string;
+  user_id:           string;
+  username:          string;
+  profile_photo_url: string | null;
+  content:           string;
+  mentions:          string[];
+  timestamp:         string;  // ISO-8601
+}
+
+/** Client → Server: send_chat_message payload */
+export interface WsSendChatMessagePayload {
+  stationId: string;
+  content:   string;
+  mentions?: string[];
+}
+
+/** Server → Client: new_chat_message broadcast */
+export interface WsChatMessagePayload {
+  messageId:       string;
+  stationId:       string;
+  userId:          string;
+  username:        string;
+  profilePhotoUrl: string | null;
+  content:         string;
+  mentions:        string[];
+  timestamp:       string;
+}
+
+/** Server → Client: comment_likes_updated broadcast (optimistic UI) */
+export interface WsCommentLikesUpdatedPayload {
+  commentId: string;
+  action:    'like' | 'unlike';
+  userId:    string;  // liker's userId
 }

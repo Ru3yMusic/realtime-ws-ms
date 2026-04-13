@@ -8,6 +8,8 @@ import { PresenceModule } from './presence/presence.module';
 import { KafkaModule } from './kafka/kafka.module';
 import { GatewayModule } from './gateway/gateway.module';
 import { CommentsModule } from './comments/comments.module';
+import { ChatModule } from './chat/chat.module';
+import { StationModule } from './station/station.module';
 
 @Module({
   imports: [
@@ -19,6 +21,8 @@ import { CommentsModule } from './comments/comments.module';
     KafkaModule,
     GatewayModule,
     CommentsModule,
+    ChatModule,
+    StationModule,
   ],
 })
 export class AppModule {}

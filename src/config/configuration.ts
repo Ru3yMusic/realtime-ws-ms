@@ -1,5 +1,7 @@
 export default () => ({
   port: parseInt(process.env.PORT ?? '3001', 10),
+  // RSA public key for JWT verification (RS256). Env var may use literal \n — normalised at use site.
+  jwtPublicKey: process.env.JWT_PUBLIC_KEY ?? '',
   redis: {
     host:     process.env.REDIS_HOST     ?? 'localhost',
     port:     parseInt(process.env.REDIS_PORT ?? '6379', 10),

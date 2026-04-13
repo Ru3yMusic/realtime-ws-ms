@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Kafka, Producer } from 'kafkajs';
 import { SchemaRegistryService } from '../schema-registry/schema-registry.service';
 import {
+  ChatMessageEvent,
   CommentCreatedEvent,
   CommentLikedEvent,
   TOPICS,
@@ -48,5 +49,14 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
       messages: [{ key: event.comment_id, value }],
     });
     this.logger.debug(`Published comment.liked: ${event.comment_id} by ${event.liker_id}`);
+  }
+
+  async publishChatMessage(event: ChatMessageEvent): Promise<void> {
+    const value = this.schemaRegistry.encode(TOPICS.CHAT_MESSAGE, event);
+    await this.producer.send({
+      topic: TOPICS.CHAT_MESSAGE,
+      messages: [{ key: event.station_id, value }],
+    });
+    this.logger.debug(`Published chat.message: ${event.message_id} in station ${event.station_id}`);
   }
 }

@@ -123,4 +123,47 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   async clearFriendBadge(userId: string): Promise<void> {
     await this.client.del(`badge:friends:${userId}`);
   }
+
+  // ── Station Cleanup ───────────────────────────────────────────────────────
+  // Used by StationCleanupService to sweep idle stations every 5 minutes.
+
+  /**
+   * Scans all Redis keys matching `station:*:listeners` using SCAN (non-blocking).
+   * Returns the full list of matching keys.
+   */
+  async scanStationListenerKeys(): Promise<string[]> {
+    const keys: string[] = [];
+    let cursor = '0';
+
+    do {
+      const [nextCursor, batch] = await this.client.scan(
+        cursor,
+        'MATCH', 'station:*:listeners',
+        'COUNT', '100',
+      );
+      cursor = nextCursor;
+      keys.push(...batch);
+    } while (cursor !== '0');
+
+    return keys;
+  }
+
+  /**
+   * Removes stale members (score < now - 300s) from a station listener sorted set.
+   * If the set is empty after pruning, deletes the key entirely.
+   * Returns the number of remaining active listeners.
+   */
+  async pruneStationListeners(stationId: string): Promise<number> {
+    const key      = `station:${stationId}:listeners`;
+    const staleMax = Date.now() - PRESENCE_TTL_MS;
+
+    await this.client.zremrangebyscore(key, '-inf', staleMax);
+
+    const remaining = await this.client.zcard(key);
+    if (remaining === 0) {
+      await this.client.del(key);
+    }
+
+    return remaining;
+  }
 }

@@ -4,10 +4,12 @@ import {
   SubscribeMessage,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
   ConnectedSocket,
   MessageBody,
 } from '@nestjs/websockets';
 import { Logger, UsePipes, ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Server, Socket } from 'socket.io';
 import { v4 as uuidv4 } from 'uuid';
 import { PresenceService } from '../presence/presence.service';
@@ -16,6 +18,7 @@ import { KafkaProducerService } from '../kafka/kafka.producer';
 import { JoinStationDto } from './dto/join-station.dto';
 import { SendCommentDto } from './dto/send-comment.dto';
 import { WsCommentPayload, WsListenerCountPayload } from '../common/types/avro-events.types';
+import { verifyJwt, normalisePem } from '../common/utils/jwt.util';
 
 /**
  * Main WebSocket gateway — implements all AsyncAPI channels.
@@ -27,7 +30,7 @@ import { WsCommentPayload, WsListenerCountPayload } from '../common/types/avro-e
  * - User rooms:     "user:{userId}"  (for targeted notification push)
  */
 @WebSocketGateway({ cors: { origin: '*' }, namespace: '/' })
-export class StationGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class StationGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   private readonly server: Server;
 
@@ -37,9 +40,17 @@ export class StationGateway implements OnGatewayConnection, OnGatewayDisconnect 
     private readonly presence: PresenceService,
     private readonly socketState: SocketStateService,
     private readonly kafkaProducer: KafkaProducerService,
+    private readonly configService: ConfigService,
   ) {}
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+  afterInit(server: Server): void {
+    // Share the Socket.IO server reference with SocketStateService so it can
+    // emit to rooms (cross-instance via Redis adapter) without a circular dep.
+    this.socketState.setServer(server);
+    this.logger.log('Socket.IO server initialised — Redis adapter active');
+  }
 
   handleConnection(socket: Socket): void {
     const userId = this.extractUserId(socket);
@@ -182,16 +193,55 @@ export class StationGateway implements OnGatewayConnection, OnGatewayDisconnect 
     this.server.to(`user:${userId}`).emit(event, data);
   }
 
+  /**
+   * Extracts and verifies the caller's identity from the WS handshake JWT.
+   *
+   * Token lookup order:
+   *  1. socket.handshake.auth.token   (preferred — Socket.IO auth object)
+   *  2. Authorization header          (fallback — "Bearer <token>")
+   *
+   * On success: sets socket.data.userId / username / profilePhotoUrl and returns userId.
+   * On failure: logs a warning and returns null → caller must disconnect the socket.
+   */
   private extractUserId(socket: Socket): string | null {
-    const id =
-      (socket.handshake.headers['x-user-id'] as string) ||
-      (socket.handshake.auth?.userId as string);
+    const rawKey    = this.configService.get<string>('jwtPublicKey') ?? '';
+    const publicKey = normalisePem(rawKey);
 
-    if (!id) return null;
+    // Resolve raw token string from auth object or Authorization header
+    const authToken   = socket.handshake.auth?.token as string | undefined;
+    const authHeader  = socket.handshake.headers.authorization as string | undefined;
+    const rawToken    = authToken ?? authHeader;
+    const token       = rawToken?.startsWith('Bearer ') ? rawToken.slice(7) : rawToken;
 
-    // Cache user metadata from handshake for use in comment payloads
-    socket.data.username       = socket.handshake.headers['x-display-name'] as string ?? id;
-    socket.data.profilePhotoUrl = socket.handshake.headers['x-profile-photo-url'] as string ?? null;
-    return id;
+    if (!token) {
+      this.logger.warn(`WS rejected [${socket.id}]: no token provided`);
+      return null;
+    }
+
+    try {
+      const payload = verifyJwt(token, publicKey);
+
+      if (!payload.sub) {
+        this.logger.warn(`WS rejected [${socket.id}]: token missing sub claim`);
+        return null;
+      }
+
+      // Prefer claims from the verified token; fall back to forwarded headers for
+      // display metadata (backward-compat with legacy gateway deployments).
+      socket.data.username =
+        payload.username ??
+        (socket.handshake.headers['x-display-name'] as string | undefined) ??
+        payload.sub;
+
+      socket.data.profilePhotoUrl =
+        payload.profilePhotoUrl ??
+        (socket.handshake.headers['x-profile-photo-url'] as string | undefined) ??
+        null;
+
+      return payload.sub;
+    } catch (err) {
+      this.logger.warn(`WS rejected [${socket.id}]: ${(err as Error).message}`);
+      return null;
+    }
   }
 }

@@ -82,9 +82,10 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
       createdAt: new Date(event.timestamp).toISOString(),
     };
 
-    if (this.socketState.isOnline(event.recipient_id)) {
-      this.socketState.emit(event.recipient_id, "notification", payload);
-      this.logger.debug(`Pushed notification to user ${event.recipient_id}`);
-    }
+    // Emit to room user:{userId} — the Redis adapter fans this out to all
+    // ws-ms instances, so no isOnline check is needed (if nobody is in the
+    // room the emit is a no-op).
+    this.socketState.emit(event.recipient_id, "notification", payload);
+    this.logger.debug(`Pushed notification to user ${event.recipient_id}`);
   }
 }

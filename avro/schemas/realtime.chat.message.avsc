@@ -1,0 +1,16 @@
+{
+  "type": "record",
+  "name": "ChatMessage",
+  "namespace": "com.rubymusic.realtime",
+  "doc": "Emitted by realtime-ws-ms when a user sends a chat message inside a station",
+  "fields": [
+    { "name": "message_id",        "type": "string",                               "doc": "Server-generated UUID" },
+    { "name": "station_id",        "type": "string" },
+    { "name": "user_id",           "type": "string" },
+    { "name": "username",          "type": "string" },
+    { "name": "profile_photo_url", "type": ["null", "string"], "default": null },
+    { "name": "content",           "type": "string" },
+    { "name": "mentions",          "type": { "type": "array", "items": "string" }, "default": [] },
+    { "name": "timestamp",         "type": "string",                               "doc": "ISO-8601 timestamp" }
+  ]
+}
