@@ -20,11 +20,20 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    const isSaslSsl = this.config.get<string>('kafka.securityProtocol') === 'SASL_SSL';
     const kafka = new Kafka({
       clientId: 'realtime-ws-ms-producer',
       brokers: [this.config.get<string>('kafka.broker')],
+      ...(isSaslSsl && {
+        ssl: true,
+        sasl: {
+          mechanism: 'plain' as const,
+          username: this.config.get<string>('kafka.apiKey') ?? '',
+          password: this.config.get<string>('kafka.apiSecret') ?? '',
+        },
+      }),
     });
-    this.producer = kafka.producer({ allowAutoTopicCreation: true });
+    this.producer = kafka.producer({ allowAutoTopicCreation: false });
     await this.producer.connect();
     this.logger.log('Kafka producer connected');
   }
