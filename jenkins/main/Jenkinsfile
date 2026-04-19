@@ -5,32 +5,31 @@ pipeline {
     timestamps()
     buildDiscarder(logRotator(numToKeepStr: '10'))
   }
-  tools {
-    nodejs 'node20'
-  }
   environment {
     SONARQUBE_SERVER = 'sonarqube'
     DOCKER_IMAGE = 'darfelio/rbm-realtime-ws'
     DOCKER_TAG = "v${BUILD_NUMBER}"
     DEPLOY_HOST = '146.181.41.236'
     DEPLOY_USER = 'ubuntu'
+    PUPPETEER_SKIP_DOWNLOAD = 'true'
+    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = 'true'
   }
   stages {
     stage('Checkout SCM') {
       steps { checkout scm }
     }
-    stage('Tests & Coverage') {
+    stage('🧪 Tests & Coverage') {
       steps {
         sh 'npm ci'
         sh 'npm run test:cov'
       }
     }
-    stage('SonarQube Analysis') {
+    stage('🔍 SonarQube Analysis') {
       steps {
         script {
           withSonarQubeEnv("${SONARQUBE_SERVER}") {
             sh '''
-              npx --yes sonarqube-scanner \
+              sonar-scanner \
                 -Dsonar.projectKey=rbm-realtime-ws \
                 -Dsonar.sources=src \
                 -Dsonar.tests=src \
@@ -44,7 +43,7 @@ pipeline {
         }
       }
     }
-    stage('Build Image') {
+    stage('🔨 Build Image') {
       steps {
         withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_PASS')]) {
           sh '''
@@ -57,7 +56,7 @@ pipeline {
         }
       }
     }
-    stage('Deploy Application') {
+    stage('🚀 Deploy Application') {
       steps {
         sshagent(credentials: ['arm-ssh-key']) {
           sh """
