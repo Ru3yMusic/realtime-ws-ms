@@ -21,7 +21,7 @@ async function bootstrap() {
     instrumentations: [getNodeAutoInstrumentations()],
   });
 
-  await otelSdk.start();
+  otelSdk.start();
   collectDefaultMetrics();
 
   const app = await NestFactory.create(AppModule);
