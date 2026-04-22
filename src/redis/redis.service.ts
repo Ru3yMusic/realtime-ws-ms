@@ -1,4 +1,4 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 
@@ -7,6 +7,7 @@ const PRESENCE_TTL_S  = 300;     // 5 min in seconds (for Hash TTL)
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(RedisService.name);
   private client: Redis;
 
   constructor(private readonly config: ConfigService) {}
@@ -17,10 +18,39 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       port:     this.config.get<number>('redis.port'),
       password: this.config.get<string | undefined>('redis.password'),
     });
+
+    // Observability only — ioredis keeps handling retry/backoff internally.
+    // These listeners surface connection issues in logs so outages (5xx
+    // health, stale presence, etc.) can be correlated without guessing.
+    this.client.on('error', (err) => {
+      this.logger.error(`Redis client error: ${err.message}`);
+    });
+    this.client.on('reconnecting', (delay: number) => {
+      this.logger.warn(`Redis client reconnecting in ${delay}ms`);
+    });
+    this.client.on('end', () => {
+      this.logger.warn('Redis client connection closed');
+    });
+    this.client.on('ready', () => {
+      this.logger.log('Redis client ready');
+    });
   }
 
   async onModuleDestroy(): Promise<void> {
     await this.client.quit();
+  }
+
+  /**
+   * Lightweight connectivity probe used by the health endpoint. Returns true
+   * if Redis answers PONG, false on any failure. Never throws.
+   */
+  async ping(): Promise<boolean> {
+    try {
+      const pong = await this.client.ping();
+      return pong === 'PONG';
+    } catch {
+      return false;
+    }
   }
 
   // ── Presence ─────────────────────────────────────────────────────────────

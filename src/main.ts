@@ -6,6 +6,7 @@ import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentation
 import { collectDefaultMetrics, register } from 'prom-client';
 import { AppModule } from './app.module';
 import { RedisIoAdapter } from './socket/redis-io.adapter';
+import { RedisService } from './redis/redis.service';
 
 const normalizeOtelEndpoint = (endpoint: string): string => endpoint.replace(/\/$/, '');
 
@@ -32,8 +33,19 @@ async function bootstrap() {
   app.useWebSocketAdapter(redisIoAdapter);
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  // Health endpoint registered before globalPrefix so it stays at /health (used by Docker)
-  app.getHttpAdapter().get('/health', (_req, res) => res.json({ status: 'ok' }));
+  // Health endpoint registered before globalPrefix so it stays at /health (used by Docker).
+  // Pings Redis (presence + pub/sub adapter live there). If Redis is unreachable the
+  // endpoint responds 503 so the orchestrator stops routing traffic and restarts the
+  // pod on its own policy. Happy path stays 200 with identical contract as before.
+  const redisService = app.get(RedisService);
+  app.getHttpAdapter().get('/health', async (_req, res) => {
+    const redisOk = await redisService.ping();
+    if (redisOk) {
+      res.json({ status: 'ok', redis: 'up' });
+    } else {
+      res.status(503).json({ status: 'degraded', redis: 'down' });
+    }
+  });
   app.getHttpAdapter().get('/metrics', async (_req, res) => {
     res.setHeader('Content-Type', register.contentType);
     res.send(await register.metrics());

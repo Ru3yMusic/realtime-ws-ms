@@ -17,6 +17,9 @@ import { SocketStateService } from '../socket/socket-state.service';
 import { KafkaProducerService } from '../kafka/kafka.producer';
 import { JoinStationDto } from './dto/join-station.dto';
 import { SendCommentDto } from './dto/send-comment.dto';
+import { DeleteCommentDto } from './dto/delete-comment.dto';
+import { LikeDeltaDto } from './dto/like-delta.dto';
+import { FriendRemovedDto } from './dto/friend-removed.dto';
 import { WsCommentPayload, WsListenerCountPayload } from '../common/types/avro-events.types';
 import { verifyJwt, normalisePem } from '../common/utils/jwt.util';
 
@@ -213,11 +216,11 @@ export class StationGateway implements OnGatewayInit, OnGatewayConnection, OnGat
    * only mirrors the UX event — it does NOT delete anything itself.
    */
   @SubscribeMessage('delete_comment')
+  @UsePipes(new ValidationPipe({ whitelist: true }))
   async handleDeleteComment(
     @ConnectedSocket() socket: Socket,
-    @MessageBody() dto: { commentId: string; stationId: string },
+    @MessageBody() dto: DeleteCommentDto,
   ): Promise<void> {
-    if (!dto?.commentId || !dto?.stationId) return;
     this.server.to(`station:${dto.stationId}`).emit('comment_deleted', {
       commentId: dto.commentId,
       stationId: dto.stationId,
@@ -231,12 +234,12 @@ export class StationGateway implements OnGatewayInit, OnGatewayConnection, OnGat
    * usual HTTP endpoint; this is purely a realtime hint.
    */
   @SubscribeMessage('like_delta')
+  @UsePipes(new ValidationPipe({ whitelist: true }))
   async handleLikeDelta(
     @ConnectedSocket() socket: Socket,
-    @MessageBody() dto: { stationId: string; songId: string; delta: number },
+    @MessageBody() dto: LikeDeltaDto,
   ): Promise<void> {
-    if (!dto?.stationId || !dto?.songId) return;
-    const sign = dto.delta >= 0 ? 1 : -1;
+    const sign: 1 | -1 = dto.delta >= 0 ? 1 : -1;
     this.server.to(`station:${dto.stationId}`).emit('like_delta', {
       stationId: dto.stationId,
       songId:    dto.songId,
@@ -252,11 +255,11 @@ export class StationGateway implements OnGatewayInit, OnGatewayConnection, OnGat
    * this handler only mirrors the event.
    */
   @SubscribeMessage('friend_removed')
+  @UsePipes(new ValidationPipe({ whitelist: true }))
   async handleFriendRemoved(
     @ConnectedSocket() socket: Socket,
-    @MessageBody() dto: { friendshipId: string; otherUserId: string },
+    @MessageBody() dto: FriendRemovedDto,
   ): Promise<void> {
-    if (!dto?.friendshipId || !dto?.otherUserId) return;
     const actorId = socket.data.userId as string | undefined;
     const payload = {
       friendshipId: dto.friendshipId,
