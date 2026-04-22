@@ -43,7 +43,7 @@ export function normalisePem(raw: string): string {
   if (!trimmed) return '';
 
   if (trimmed.includes('-----BEGIN')) {
-    return trimmed.replaceAll(/\\n/g, '\n');
+    return trimmed.replaceAll('\\n', '\n');
   }
 
   const body = trimmed.replaceAll(/\s+/g, '').match(/.{1,64}/g)?.join('\n') ?? '';
