@@ -62,7 +62,12 @@ describe('StationGateway — JWT handshake validation', () => {
         },
         {
           provide: SocketStateService,
-          useValue: { add: jest.fn(), remove: jest.fn() },
+          useValue: {
+            add: jest.fn(),
+            remove: jest.fn(),
+            isOnline: jest.fn().mockReturnValue(true),
+            setServer: jest.fn(),
+          },
         },
         {
           provide: KafkaProducerService,

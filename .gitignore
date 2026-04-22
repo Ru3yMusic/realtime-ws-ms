@@ -7,7 +7,7 @@ src/generated/
 
 # Docs (also generated)
 docs/asyncapi/
-
+coverage/
 # Env
 .env
 # *.env.local
