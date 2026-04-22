@@ -39,7 +39,11 @@ async function bootstrap() {
     res.send(await register.metrics());
   });
   app.setGlobalPrefix('api');
-  app.enableCors();
+  // CORS is owned exclusively by api-gateway (spring.cloud.gateway.globalcors).
+  // Do NOT call app.enableCors() here: the gateway re-writes Access-Control-Allow-Origin
+  // on every proxied response, so adding it again in Nest produces a duplicate
+  // "Access-Control-Allow-Origin: *, *" that the browser rejects.
+  // Socket.IO WebSocket CORS is handled separately by @WebSocketGateway({ cors }).
 
   const port = process.env.PORT ?? 3001;
   await app.listen(port);

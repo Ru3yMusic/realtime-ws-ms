@@ -5,6 +5,11 @@ export interface JwtPayload {
   sub: string;
   role?: string;
   email?: string;
+  /**
+   * auth-service emits the human-readable name under `displayName`.
+   * `username` is kept for backward-compat with older tokens.
+   */
+  displayName?: string;
   username?: string;
   profilePhotoUrl?: string;
   iat?: number;
@@ -20,10 +25,27 @@ export function verifyJwt(token: string, publicKey: string): JwtPayload {
 }
 
 /**
- * Normalises a PEM public key string.
- * Environment variables often store multi-line PEMs with literal `\n` sequences
- * instead of actual newline characters. This converts them back.
+ * Returns a PEM-formatted RSA public key that `jsonwebtoken` / `crypto` can consume.
+ *
+ * Accepts two input formats so the same JWT_PUBLIC_KEY env var works here and in
+ * api-gateway (Spring), which stores it as raw base64 (X.509 SubjectPublicKeyInfo DER):
+ *
+ *   1. PEM already (with "-----BEGIN PUBLIC KEY-----" markers, possibly with
+ *      escaped "\n" sequences from a .env line): just unescape the newlines.
+ *   2. Raw base64 DER (single line, no headers): wrap in PEM markers with
+ *      64-char line breaks, producing a valid SPKI PEM.
+ *
+ * Without this, jwt.verify throws:
+ *   "secretOrPublicKey must be an asymmetric key when using RS256".
  */
 export function normalisePem(raw: string): string {
-  return raw.replace(/\\n/g, '\n');
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+
+  if (trimmed.includes('-----BEGIN')) {
+    return trimmed.replace(/\\n/g, '\n');
+  }
+
+  const body = trimmed.replace(/\s+/g, '').match(/.{1,64}/g)?.join('\n') ?? '';
+  return `-----BEGIN PUBLIC KEY-----\n${body}\n-----END PUBLIC KEY-----\n`;
 }

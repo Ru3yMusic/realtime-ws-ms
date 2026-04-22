@@ -59,9 +59,18 @@ export class StationGateway implements OnGatewayInit, OnGatewayConnection, OnGat
       return;
     }
     socket.data.userId = userId;
+
+    // Detect first-socket connect BEFORE add() so multi-tab users only fire
+    // `online: true` once per session (the second tab is a no-op to observers).
+    const wasAlreadyOnline = this.socketState.isOnline(userId);
+
     this.socketState.add(userId, socket);
     socket.join(`user:${userId}`);
     this.logger.debug(`Connected: ${userId}`);
+
+    if (!wasAlreadyOnline) {
+      this.broadcastUserPresenceChanged(userId, null, true);
+    }
   }
 
   async handleDisconnect(socket: Socket): Promise<void> {
@@ -76,6 +85,12 @@ export class StationGateway implements OnGatewayInit, OnGatewayConnection, OnGat
       await this.presence.leaveStation(userId, stationId);
       socket.leave(`station:${stationId}`);
       await this.broadcastListenerCount(stationId);
+    }
+
+    // Only announce offline when the LAST socket for this user closes; with
+    // two tabs open, closing one must not flip friends to "Inactivo".
+    if (!this.socketState.isOnline(userId)) {
+      this.broadcastUserPresenceChanged(userId, null, false);
     }
 
     this.logger.debug(`Disconnected: ${userId}`);
@@ -108,6 +123,10 @@ export class StationGateway implements OnGatewayInit, OnGatewayConnection, OnGat
     const count = await this.presence.getListenerCount(dto.stationId);
     await this.broadcastListenerCount(dto.stationId);
     socket.emit('joined_station', { stationId: dto.stationId, listenerCount: count });
+
+    // Broadcast the user's new station so friends watching "Activos estación"
+    // update their cards (and show the 3 s toast) in real time.
+    this.broadcastUserPresenceChanged(userId, dto.stationId, true);
   }
 
   @SubscribeMessage('leave_station')
@@ -122,6 +141,10 @@ export class StationGateway implements OnGatewayInit, OnGatewayConnection, OnGat
     socket.data.songId    = undefined;
 
     await this.broadcastListenerCount(stationId);
+
+    // User still online, just no longer in a station — the friend card reverts
+    // to the neutral "está en tu lista de amigos" state.
+    this.broadcastUserPresenceChanged(userId, null, true);
   }
 
   @SubscribeMessage('send_comment')
@@ -168,6 +191,68 @@ export class StationGateway implements OnGatewayInit, OnGatewayConnection, OnGat
     }).catch((err) => this.logger.error('Failed to publish comment.created', err));
   }
 
+  /**
+   * Fan-out a comment deletion to every client watching the same station so
+   * the card disappears in real time for viewers. Persistence is done by the
+   * client via HTTP DELETE against realtime-api-ms (owner-only); this handler
+   * only mirrors the UX event — it does NOT delete anything itself.
+   */
+  @SubscribeMessage('delete_comment')
+  async handleDeleteComment(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() dto: { commentId: string; stationId: string },
+  ): Promise<void> {
+    if (!dto?.commentId || !dto?.stationId) return;
+    this.server.to(`station:${dto.stationId}`).emit('comment_deleted', {
+      commentId: dto.commentId,
+      stationId: dto.stationId,
+    });
+  }
+
+  /**
+   * Fan-out a like-count delta ({+1} or {-1}) for a song being played in a
+   * station so the counter in other viewers' UI updates in real time.
+   * Persistence of the actual like is handled by interaction-service via the
+   * usual HTTP endpoint; this is purely a realtime hint.
+   */
+  @SubscribeMessage('like_delta')
+  async handleLikeDelta(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() dto: { stationId: string; songId: string; delta: number },
+  ): Promise<void> {
+    if (!dto?.stationId || !dto?.songId) return;
+    const sign = dto.delta >= 0 ? 1 : -1;
+    this.server.to(`station:${dto.stationId}`).emit('like_delta', {
+      stationId: dto.stationId,
+      songId:    dto.songId,
+      delta:     sign,
+      actorId:   socket.data.userId as string | undefined,
+    });
+  }
+
+  /**
+   * Fan-out a friendship removal so both the actor's other tabs AND the
+   * removed friend's sessions drop the row from `_friends` in real time.
+   * Persistence is done by the caller via HTTP DELETE against social-service;
+   * this handler only mirrors the event.
+   */
+  @SubscribeMessage('friend_removed')
+  async handleFriendRemoved(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() dto: { friendshipId: string; otherUserId: string },
+  ): Promise<void> {
+    if (!dto?.friendshipId || !dto?.otherUserId) return;
+    const actorId = socket.data.userId as string | undefined;
+    const payload = {
+      friendshipId: dto.friendshipId,
+      removedByUserId: actorId,
+    };
+    this.server.to(`user:${dto.otherUserId}`).emit('friend_removed', payload);
+    if (actorId) {
+      this.server.to(`user:${actorId}`).emit('friend_removed', payload);
+    }
+  }
+
   @SubscribeMessage('ping_presence')
   async handlePingPresence(@ConnectedSocket() socket: Socket): Promise<void> {
     const userId    = socket.data.userId    as string;
@@ -186,6 +271,20 @@ export class StationGateway implements OnGatewayInit, OnGatewayConnection, OnGat
     const count = await this.presence.getListenerCount(stationId);
     const payload: WsListenerCountPayload = { stationId, count };
     this.server.to(`station:${stationId}`).emit('listener_count', payload);
+  }
+
+  /**
+   * Global broadcast of a presence transition. Every connected socket receives
+   * it; the client filters by its own friend list before acting. Cheap for
+   * now — if the app grows we'd narrow this to per-friend rooms resolved from
+   * social-service.
+   */
+  private broadcastUserPresenceChanged(
+    userId: string,
+    stationId: string | null,
+    online: boolean,
+  ): void {
+    this.server.emit('user_presence_changed', { userId, stationId, online });
   }
 
   /** Called by KafkaConsumerService after decoding a notification.push event. */
@@ -228,8 +327,12 @@ export class StationGateway implements OnGatewayInit, OnGatewayConnection, OnGat
 
       // Prefer claims from the verified token; fall back to forwarded headers for
       // display metadata (backward-compat with legacy gateway deployments).
+      // NOTE: auth-service emits `displayName` (not `username`) as the readable
+      // name claim. Check both so comments/chat broadcast the real name instead
+      // of the UUID (payload.sub fallback).
       socket.data.username =
         payload.username ??
+        payload.displayName ??
         (socket.handshake.headers['x-display-name'] as string | undefined) ??
         payload.sub;
 
