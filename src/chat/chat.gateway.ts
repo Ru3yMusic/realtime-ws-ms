@@ -13,6 +13,16 @@ import { WsChatMessagePayload } from '../common/types/avro-events.types';
 import { SendChatMessageDto } from './dto/send-chat-message.dto';
 
 /**
+ * Same CORS whitelist as StationGateway so both decorators stay in sync.
+ * Override with env WS_CORS_ORIGINS when deploying behind a different domain.
+ */
+const WS_CORS_ORIGINS = (process.env.WS_CORS_ORIGINS
+  ?? 'http://localhost:4200,http://127.0.0.1:4200')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+/**
  * ChatGateway — handles real-time station chat messages.
  *
  * Shares the same Socket.IO namespace ('/') and Redis adapter as StationGateway,
@@ -23,7 +33,10 @@ import { SendChatMessageDto } from './dto/send-chat-message.dto';
  * socket.data.userId, username, and profilePhotoUrl on every connection.
  * Users must call join_station before sending chat messages (stationId guard).
  */
-@WebSocketGateway({ cors: { origin: '*' }, namespace: '/' })
+@WebSocketGateway({
+  cors: { origin: WS_CORS_ORIGINS, credentials: true },
+  namespace: '/',
+})
 export class ChatGateway {
   @WebSocketServer()
   private readonly server: Server;

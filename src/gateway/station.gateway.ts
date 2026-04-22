@@ -21,6 +21,18 @@ import { WsCommentPayload, WsListenerCountPayload } from '../common/types/avro-e
 import { verifyJwt, normalisePem } from '../common/utils/jwt.util';
 
 /**
+ * Socket.IO WebSocket CORS whitelist. Takes precedence over '*' so only the
+ * known frontend origins can open a WS handshake. Override with env
+ * WS_CORS_ORIGINS (comma-separated) when deploying behind a different domain.
+ * NOTE: the REST CORS of the API gateway is independent — see main.ts comment.
+ */
+const WS_CORS_ORIGINS = (process.env.WS_CORS_ORIGINS
+  ?? 'http://localhost:4200,http://127.0.0.1:4200')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+/**
  * Main WebSocket gateway — implements all AsyncAPI channels.
  *
  * Design notes:
@@ -29,7 +41,10 @@ import { verifyJwt, normalisePem } from '../common/utils/jwt.util';
  * - Station rooms:  "station:{stationId}"
  * - User rooms:     "user:{userId}"  (for targeted notification push)
  */
-@WebSocketGateway({ cors: { origin: '*' }, namespace: '/' })
+@WebSocketGateway({
+  cors: { origin: WS_CORS_ORIGINS, credentials: true },
+  namespace: '/',
+})
 export class StationGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   private readonly server: Server;
