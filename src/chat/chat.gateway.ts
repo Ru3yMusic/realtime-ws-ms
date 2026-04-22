@@ -17,7 +17,7 @@ import { SendChatMessageDto } from './dto/send-chat-message.dto';
  * Override with env WS_CORS_ORIGINS when deploying behind a different domain.
  */
 const WS_CORS_ORIGINS = (process.env.WS_CORS_ORIGINS
-  ?? 'http://localhost:4200,http://127.0.0.1:4200')
+  ?? '')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);

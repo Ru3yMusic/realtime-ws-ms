@@ -30,7 +30,7 @@ import { verifyJwt, normalisePem } from '../common/utils/jwt.util';
  * NOTE: the REST CORS of the API gateway is independent — see main.ts comment.
  */
 const WS_CORS_ORIGINS = (process.env.WS_CORS_ORIGINS
-  ?? 'http://localhost:4200,http://127.0.0.1:4200')
+  ?? '')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);

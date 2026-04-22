@@ -12,16 +12,12 @@ export class PresenceController {
 
   @Get('me')
   async getMyPresence(@Headers('x-user-id') userId: string) {
-    const data = await this.presence.getPresence(userId);
-    const online = !!data || this.socketState.isOnline(userId);
-    return { online, ...(data ?? {}) };
+    return this.buildPresenceResponse(userId);
   }
 
   @Get('users/:userId')
   async getUserPresence(@Param('userId') userId: string) {
-    const data = await this.presence.getPresence(userId);
-    const online = !!data || this.socketState.isOnline(userId);
-    return { online, ...(data ?? {}) };
+    return this.buildPresenceResponse(userId);
   }
 
   @Get('stations/:stationId/listeners')
@@ -60,5 +56,11 @@ export class PresenceController {
       };
     }
     return result;
+  }
+
+  private async buildPresenceResponse(userId: string) {
+    const data = await this.presence.getPresence(userId);
+    const online = !!data || this.socketState.isOnline(userId);
+    return data ? { online, ...data } : { online };
   }
 }
