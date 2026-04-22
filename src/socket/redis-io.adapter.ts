@@ -1,7 +1,7 @@
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { ServerOptions } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 
@@ -18,6 +18,7 @@ import Redis from 'ioredis';
  *   app.useWebSocketAdapter(redisIoAdapter);
  */
 export class RedisIoAdapter extends IoAdapter {
+  private readonly logger = new Logger(RedisIoAdapter.name);
   private adapterConstructor: ReturnType<typeof createAdapter>;
 
   constructor(private readonly app: INestApplication) {
@@ -35,7 +36,28 @@ export class RedisIoAdapter extends IoAdapter {
     const pubClient = new Redis(options);
     const subClient = pubClient.duplicate();
 
+    // Observability only — ioredis handles retry/backoff internally. Without
+    // these listeners, a pub/sub outage silently breaks cross-instance
+    // delivery in multi-pod deployments.
+    this.attachConnectionLogs(pubClient, 'pub');
+    this.attachConnectionLogs(subClient, 'sub');
+
     this.adapterConstructor = createAdapter(pubClient, subClient);
+  }
+
+  private attachConnectionLogs(client: Redis, label: 'pub' | 'sub'): void {
+    client.on('error', (err) => {
+      this.logger.error(`Redis IO adapter (${label}) error: ${err.message}`);
+    });
+    client.on('reconnecting', (delay: number) => {
+      this.logger.warn(`Redis IO adapter (${label}) reconnecting in ${delay}ms`);
+    });
+    client.on('end', () => {
+      this.logger.warn(`Redis IO adapter (${label}) connection closed`);
+    });
+    client.on('ready', () => {
+      this.logger.log(`Redis IO adapter (${label}) ready`);
+    });
   }
 
   createIOServer(port: number, options?: ServerOptions): any {
