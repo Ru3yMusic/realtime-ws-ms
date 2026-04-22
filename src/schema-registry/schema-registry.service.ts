@@ -87,13 +87,15 @@ export class SchemaRegistryService implements OnModuleInit {
 
   private async initProdCodecs(registryUrl: string): Promise<void> {
     const schemaDir = path.join(process.cwd(), 'avro', 'schemas');
+    const apiKey    = this.config.get<string>('schemaRegistry.apiKey');
+    const apiSecret = this.config.get<string>('schemaRegistry.apiSecret');
 
     for (const [topic, filename] of Object.entries(SchemaRegistryService.TOPIC_SCHEMA_MAP)) {
       const schemaPath = path.join(schemaDir, filename);
       const schemaDef = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
       const type = avsc.Type.forSchema(schemaDef);
 
-      const schemaId = await this.registerSchema(registryUrl, `${topic}-value`, schemaDef);
+      const schemaId = await this.registerSchema(registryUrl, `${topic}-value`, schemaDef, apiKey, apiSecret);
       this.logger.log(`Schema registered/found — topic: ${topic}, id: ${schemaId}`);
 
       this.codecs.set(topic, {
@@ -119,10 +121,13 @@ export class SchemaRegistryService implements OnModuleInit {
     registryUrl: string,
     subject: string,
     schemaDef: object,
+    apiKey?: string,
+    apiSecret?: string,
   ): Promise<number> {
     const url = `${registryUrl}/subjects/${subject}/versions`;
     const response = await axios.post(url, { schema: JSON.stringify(schemaDef) }, {
       headers: { 'Content-Type': 'application/vnd.schemaregistry.v1+json' },
+      ...(apiKey ? { auth: { username: apiKey, password: apiSecret ?? '' } } : {}),
     });
     return response.data.id as number;
   }

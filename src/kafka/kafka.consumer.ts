@@ -30,9 +30,18 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    const isSaslSsl = this.config.get<string>('kafka.securityProtocol') === 'SASL_SSL';
     const kafka = new Kafka({
       clientId: "realtime-ws-ms-consumer",
       brokers: [this.config.get<string>("kafka.broker")],
+      ...(isSaslSsl && {
+        ssl: true,
+        sasl: {
+          mechanism: 'plain' as const,
+          username: this.config.get<string>('kafka.apiKey') ?? '',
+          password: this.config.get<string>('kafka.apiSecret') ?? '',
+        },
+      }),
     });
 
     this.consumer = kafka.consumer({
