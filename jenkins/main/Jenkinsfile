@@ -20,7 +20,7 @@ pipeline {
     }
     stage('🧪 Tests & Coverage') {
       steps {
-        sh 'npm ci'
+        sh 'npm ci --ignore-scripts'
         sh 'npm run test:cov'
       }
     }
