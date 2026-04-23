@@ -61,7 +61,7 @@ Pass `X-User-Id` in the Socket.IO **handshake headers**. The api-gateway forward
 
 ```
 // iOS Socket.IO connection example
-const socket = io("ws://localhost:3001", {
+const socket = io("wss://<realtime-ws-domain>", {
   extraHeaders: {
     "X-User-Id": "<uuid>",
     "X-Display-Name": "Franco",
@@ -142,10 +142,10 @@ Presence expires automatically after 5 minutes of inactivity (no explicit logout
 | Variable | Default | Description |
 |---|---|---|
 | `PORT` | `3001` | HTTP + WebSocket port |
-| `REDIS_HOST` | `localhost` | Redis hostname |
+| `REDIS_HOST` | _(required)_ | Redis hostname |
 | `REDIS_PORT` | `6379` | Redis port |
 | `REDIS_PASSWORD` | — | Redis AUTH password |
-| `KAFKA_BROKER` | `localhost:9092` | Kafka broker address |
+| `KAFKA_BROKER` | _(required)_ | Kafka broker address |
 | `KAFKA_GROUP_ID` | `realtime-ws-ms` | Kafka consumer group |
 | `SCHEMA_REGISTRY_URL` | _(empty)_ | Confluent Schema Registry URL — empty = dev mode |
 
