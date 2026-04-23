@@ -62,7 +62,11 @@ pipeline {
           sh """
             ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
               docker pull ${DOCKER_IMAGE}:${DOCKER_TAG} &&
-              export REALTIME_WS_TAG=${DOCKER_TAG} &&
+              if grep -q "^REALTIME_WS_TAG=" .env.prod; then
+                sed -i "s|^REALTIME_WS_TAG=.*|REALTIME_WS_TAG=${DOCKER_TAG}|" .env.prod;
+              else
+                echo "REALTIME_WS_TAG=${DOCKER_TAG}" >> .env.prod;
+              fi &&
               docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --no-deps realtime-ws-ms
             '
           """
