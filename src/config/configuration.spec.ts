@@ -21,11 +21,11 @@ describe('configuration', () => {
   it('returns defaults when optional env vars are absent', () => {
     const cfg = loadConfigWithEnv({
       PORT: undefined,
-      JWT_PUBLIC_KEY: undefined,
-      REDIS_HOST: undefined,
+      JWT_PUBLIC_KEY: 'test-pub-key',
+      REDIS_HOST: 'localhost',
       REDIS_PORT: undefined,
       REDIS_PASSWORD: undefined,
-      KAFKA_BROKER: undefined,
+      KAFKA_BROKER: 'localhost:9092',
       KAFKA_GROUP_ID: undefined,
       KAFKA_SECURITY_PROTOCOL: undefined,
       CONFLUENT_API_KEY: undefined,
@@ -38,10 +38,10 @@ describe('configuration', () => {
 
     expect(cfg).toEqual({
       port: 3001,
-      jwtPublicKey: '',
-      redis: { host: '', port: 6379, password: undefined },
+      jwtPublicKey: 'test-pub-key',
+      redis: { host: 'localhost', port: 6379, password: undefined },
       kafka: {
-        broker: '',
+        broker: 'localhost:9092',
         groupId: 'realtime-ws-ms',
         securityProtocol: 'PLAINTEXT',
         apiKey: '',
