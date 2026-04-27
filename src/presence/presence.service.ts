@@ -31,11 +31,11 @@ export class PresenceService {
     return this.redis.isRecentOccupant(stationId, userId, withinMs);
   }
 
+  // Heartbeat reuses the join write-path on purpose: addStationListener is an
+  // idempotent ZADD that refreshes the score, which is exactly what we want
+  // when a still-connected client pings to extend its presence TTL.
   async refreshHeartbeat(userId: string, stationId: string, songId = ''): Promise<void> {
-    await Promise.all([
-      this.redis.setPresence(userId, stationId, songId),
-      this.redis.addStationListener(stationId, userId), // refreshes ZADD score
-    ]);
+    await this.joinStation(userId, stationId, songId);
   }
 
   async getPresence(userId: string): Promise<Record<string, string> | null> {
