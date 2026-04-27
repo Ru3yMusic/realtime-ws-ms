@@ -69,7 +69,16 @@ describe('RedisIoAdapter', () => {
 
     const result = adapter.createIOServer(3001, { transports: ['websocket'] } as any);
 
-    expect(IoAdapter.prototype.createIOServer).toHaveBeenCalledWith(3001, { transports: ['websocket'] });
+    expect(IoAdapter.prototype.createIOServer).toHaveBeenCalledWith(
+      3001,
+      expect.objectContaining({
+        transports: ['websocket'],
+        pingTimeout: 60_000,
+        pingInterval: 25_000,
+        connectTimeout: 45_000,
+        maxHttpBufferSize: 1_000_000,
+      }),
+    );
     expect(server.adapter).toHaveBeenCalledWith({ kind: 'adapter' });
     expect(result).toBe(server);
   });

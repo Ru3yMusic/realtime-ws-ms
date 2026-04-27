@@ -6,6 +6,7 @@ describe('PresenceService', () => {
     addStationListener: jest.fn(),
     removePresence: jest.fn(),
     removeStationListener: jest.fn(),
+    markRecentOccupant: jest.fn(),
     getPresence: jest.fn(),
     getActiveListenerCount: jest.fn(),
     getActiveListeners: jest.fn(),
@@ -33,11 +34,13 @@ describe('PresenceService', () => {
   });
 
   it('leaveStation removes both presence and station listener', async () => {
+    redis.markRecentOccupant.mockResolvedValue(undefined);
     redis.removePresence.mockResolvedValue(undefined);
     redis.removeStationListener.mockResolvedValue(undefined);
 
     await service.leaveStation('u1', 's1');
 
+    expect(redis.markRecentOccupant).toHaveBeenCalledWith('s1', 'u1');
     expect(redis.removePresence).toHaveBeenCalledWith('u1');
     expect(redis.removeStationListener).toHaveBeenCalledWith('s1', 'u1');
   });
