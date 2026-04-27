@@ -57,15 +57,19 @@ KafkaConsumerService ◀── realtime.notification.push (Avro) ── realtime
 | `joined_station` | `{ stationId, listenerCount }` | Acknowledgement after joining |
 
 ### Authentication
-Pass `X-User-Id` in the Socket.IO **handshake headers**. The api-gateway forwards this from the JWT `sub` claim. Connections without `X-User-Id` are immediately disconnected.
+Pass a JWT access token in Socket.IO handshake auth (`auth.token`).
+The service verifies the token with the shared RSA public key and extracts `sub` as `userId`.
+
+Connections without a valid token are rejected.
+
+Optional (premium UX): client may emit `auth_refresh` with a renewed access token to refresh
+socket identity without forcing a full reconnect.
 
 ```
 // iOS Socket.IO connection example
-const socket = io("wss://<realtime-ws-domain>", {
-  extraHeaders: {
-    "X-User-Id": "<uuid>",
-    "X-Display-Name": "Franco",
-    "X-Profile-Photo-Url": "https://..."
+const socket = io("wss://<gateway-domain>", {
+  auth: {
+    token: "Bearer <access-token>"
   }
 });
 ```

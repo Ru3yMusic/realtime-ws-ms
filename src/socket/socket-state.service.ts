@@ -65,4 +65,18 @@ export class SocketStateService {
     // Server not yet initialised — should not happen in production after gateway init
     console.warn(`SocketStateService.emitToStation: server not initialised, dropping ${event}`);
   }
+
+  /**
+   * Fan-out an event to EVERY connected socket across every instance via the
+   * Redis adapter. Used for catalog-wide stats updates (followers count, play
+   * count) that need to reach all logged-in users regardless of which station
+   * room or page they currently sit on.
+   */
+  broadcastAll(event: string, data: unknown): void {
+    if (this.server) {
+      this.server.emit(event, data);
+      return;
+    }
+    console.warn(`SocketStateService.broadcastAll: server not initialised, dropping ${event}`);
+  }
 }

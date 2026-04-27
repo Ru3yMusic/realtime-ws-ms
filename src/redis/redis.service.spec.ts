@@ -15,6 +15,7 @@ const mockClient = {
   expire: jest.fn().mockResolvedValue(undefined),
   hgetall: jest.fn(),
   del: jest.fn().mockResolvedValue(undefined),
+  set: jest.fn().mockResolvedValue('OK'),
   pipeline: jest.fn(() => mockPipeline),
   zadd: jest.fn().mockResolvedValue(undefined),
   zremrangebyscore: jest.fn().mockResolvedValue(undefined),
@@ -163,6 +164,7 @@ describe('RedisService', () => {
 
     expect(mockClient.zremrangebyscore).toHaveBeenCalledWith('station:dead:listeners', '-inf', 700000);
     expect(mockClient.del).toHaveBeenCalledWith('station:dead:listeners');
+    expect(mockClient.del).toHaveBeenCalledWith('station:dead:session');
     expect(mockClient.del).not.toHaveBeenCalledWith('station:alive:listeners');
   });
 });

@@ -61,7 +61,23 @@ export class RedisIoAdapter extends IoAdapter {
   }
 
   createIOServer(port: number, options?: ServerOptions): any {
-    const server = super.createIOServer(port, options);
+    // Tuned defaults for high-concurrency Socket.IO. Caller-provided options
+    // win — gateway @WebSocketGateway({ cors }) decorators still take effect.
+    // pingTimeout/pingInterval drive presence detection: the server marks a
+    // client offline after pingTimeout ms without a pong (default 20s — too
+    // aggressive for spotty mobile networks).
+    // connectTimeout caps the handshake (auth + upgrade) before giving up.
+    // maxHttpBufferSize caps a single Socket.IO message payload (chat msg,
+    // event body) — 1 MB matches the default but is set explicitly so it's
+    // visible and easy to lift if larger station chat payloads are needed.
+    const tunedDefaults: Partial<ServerOptions> = {
+      pingTimeout: Number(process.env.SOCKET_IO_PING_TIMEOUT_MS) || 60_000,
+      pingInterval: Number(process.env.SOCKET_IO_PING_INTERVAL_MS) || 25_000,
+      connectTimeout: Number(process.env.SOCKET_IO_CONNECT_TIMEOUT_MS) || 45_000,
+      maxHttpBufferSize: Number(process.env.SOCKET_IO_MAX_BUFFER_BYTES) || 1_000_000,
+    };
+    const merged = { ...tunedDefaults, ...(options ?? {}) } as ServerOptions;
+    const server = super.createIOServer(port, merged);
     server.adapter(this.adapterConstructor);
     return server;
   }

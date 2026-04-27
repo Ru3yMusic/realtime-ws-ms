@@ -34,6 +34,7 @@ function makeSocket(overrides: {
     },
     data:       {} as Record<string, unknown>,
     disconnect: jest.fn(),
+    on:         jest.fn(),
     join:       jest.fn(),
     leave:      jest.fn(),
     emit:       jest.fn(),
@@ -58,6 +59,9 @@ describe('StationGateway — JWT handshake validation', () => {
             leaveStation:      jest.fn(),
             getListenerCount:  jest.fn().mockResolvedValue(0),
             refreshHeartbeat:  jest.fn(),
+            getStationSession: jest.fn().mockResolvedValue(null),
+            setStationSession: jest.fn().mockResolvedValue(undefined),
+            clearStationSession: jest.fn().mockResolvedValue(undefined),
           },
         },
         {
@@ -171,6 +175,52 @@ describe('StationGateway — JWT handshake validation', () => {
 
     gateway.handleConnection(socket as any);
 
+    expect(socket.disconnect).toHaveBeenCalledWith(true);
+  });
+
+  // ── auth_refresh ──────────────────────────────────────────────────────────
+
+  it('accepts auth_refresh with a valid token', () => {
+    const socket = makeSocket({ authToken: 'valid.jwt.token' });
+
+    (jwt.verify as jest.Mock).mockReturnValueOnce({ sub: 'user-42', displayName: 'Alice' });
+    gateway.handleConnection(socket as any);
+
+    (jwt.verify as jest.Mock).mockReturnValueOnce({ sub: 'user-42', displayName: 'Alice v2' });
+    const ack = gateway.handleAuthRefresh(socket as any, { token: 'Bearer refreshed.jwt.token' });
+
+    expect(ack).toEqual({ ok: true });
+    expect(socket.data.userId).toBe('user-42');
+    expect(socket.data.username).toBe('Alice v2');
+  });
+
+  it('rejects auth_refresh when token is expired', () => {
+    const socket = makeSocket({ authToken: 'valid.jwt.token' });
+
+    (jwt.verify as jest.Mock).mockReturnValueOnce({ sub: 'user-42' });
+    gateway.handleConnection(socket as any);
+
+    (jwt.verify as jest.Mock).mockImplementationOnce(() => {
+      const err: Error & { name?: string } = new Error('jwt expired');
+      err.name = 'TokenExpiredError';
+      throw err;
+    });
+
+    const ack = gateway.handleAuthRefresh(socket as any, { token: 'Bearer expired.jwt.token' });
+    expect(ack).toEqual({ ok: false, code: 'TOKEN_EXPIRED' });
+    expect(socket.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('disconnects on auth_refresh user mismatch', () => {
+    const socket = makeSocket({ authToken: 'valid.jwt.token' });
+
+    (jwt.verify as jest.Mock).mockReturnValueOnce({ sub: 'user-42' });
+    gateway.handleConnection(socket as any);
+
+    (jwt.verify as jest.Mock).mockReturnValueOnce({ sub: 'user-99' });
+    const ack = gateway.handleAuthRefresh(socket as any, { token: 'Bearer other-user.jwt.token' });
+
+    expect(ack).toEqual({ ok: false, code: 'USER_MISMATCH' });
     expect(socket.disconnect).toHaveBeenCalledWith(true);
   });
 });

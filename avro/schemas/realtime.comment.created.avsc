@@ -12,6 +12,7 @@
     { "name": "profile_photo_url","type": ["null", "string"], "default": null },
     { "name": "content",          "type": "string" },
     { "name": "mentions",         "type": { "type": "array", "items": "string" }, "default": [] },
-    { "name": "timestamp",        "type": "long", "logicalType": "timestamp-millis" }
+    { "name": "timestamp",        "type": "long", "logicalType": "timestamp-millis" },
+    { "name": "session_version",  "type": "int",   "default": 1, "doc": "Station session version at the moment of creation. Bumped on count===0 reset; comments from older versions are filtered out for the current audience." }
   ]
 }

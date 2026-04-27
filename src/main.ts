@@ -64,6 +64,18 @@ async function bootstrap() {
   const port = process.env.PORT ?? 3001;
   await app.listen(port);
 
+  // Tune the underlying Node HTTP server for high concurrency.
+  // keepAliveTimeout 65s keeps idle sockets open longer than typical
+  // upstream proxies (api-gateway, ALB) so we never close a socket the
+  // proxy still considers alive (otherwise → ECONNRESET / 502).
+  // headersTimeout MUST be > keepAliveTimeout to avoid a Node race that
+  // can deadlock keep-alive sockets after the timeout fires.
+  const httpServer = app.getHttpServer();
+  httpServer.keepAliveTimeout =
+    Number(process.env.HTTP_KEEP_ALIVE_TIMEOUT_MS) || 65_000;
+  httpServer.headersTimeout =
+    Number(process.env.HTTP_HEADERS_TIMEOUT_MS) || 66_000;
+
   const shutdown = async () => {
     if (otelSdk) {
       await otelSdk.shutdown();

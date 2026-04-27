@@ -5,6 +5,28 @@ import Redis from 'ioredis';
 const PRESENCE_TTL_MS = 300_000; // 5 min in milliseconds (for ZADD score pruning)
 const PRESENCE_TTL_S  = 300;     // 5 min in seconds (for Hash TTL)
 
+// Recent-occupants tracking: keeps a record of users who were just in a
+// station so we can distinguish a transient reload from a brand-new arrival
+// to an empty station. Lives long enough to cover slow reloads and brief
+// network blips, short enough that returning the next day looks like a fresh
+// entry that should reset the broadcast.
+const RECENT_OCCUPANT_TTL_S = 120;
+
+export interface StationSession {
+  stationId: string;
+  startedAtMs: number;
+  queue: string[];
+  durationsSeconds: number[];
+  version: number;
+}
+
+const LOCK_RELEASE_SCRIPT = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0
+`;
+
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
@@ -126,6 +148,119 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     return this.client.zrangebyscore(`station:${stationId}:listeners`, minScore, '+inf');
   }
 
+  // ── Recent Occupants ──────────────────────────────────────────────────────
+  // Sorted set: station:{stationId}:recent → score = last_seen epoch ms
+  // Used to tell a reloading user (was here moments ago) apart from a brand-new
+  // arrival to an empty station (e.g. clicking a notification). The first must
+  // inherit the running broadcast; the second must trigger an instant reset.
+
+  async markRecentOccupant(stationId: string, userId: string): Promise<void> {
+    const key = `station:${stationId}:recent`;
+    const now = Date.now();
+    await Promise.all([
+      this.client.zadd(key, now, userId),
+      this.client.expire(key, RECENT_OCCUPANT_TTL_S),
+      // Prune entries older than the TTL while we're here so the set never
+      // grows past the active recent population.
+      this.client.zremrangebyscore(key, '-inf', now - RECENT_OCCUPANT_TTL_S * 1000),
+    ]);
+  }
+
+  async isRecentOccupant(stationId: string, userId: string, withinMs: number): Promise<boolean> {
+    const key = `station:${stationId}:recent`;
+    const raw = await this.client.zscore(key, userId);
+    if (!raw) return false;
+    const score = parseInt(raw, 10);
+    if (!Number.isFinite(score)) return false;
+    return score >= Date.now() - withinMs;
+  }
+
+  // ── Station Playback Session ───────────────────────────────────────────────
+
+  async getStationSession(stationId: string): Promise<StationSession | null> {
+    const raw = await this.client.get(`station:${stationId}:session`);
+    if (!raw) return null;
+
+    try {
+      const parsed = JSON.parse(raw) as Partial<StationSession>;
+      if (
+        !parsed
+        || !Array.isArray(parsed.queue)
+        || !Array.isArray(parsed.durationsSeconds)
+        || !Number.isFinite(parsed.startedAtMs)
+        || !Number.isFinite(parsed.version)
+      ) {
+        return null;
+      }
+
+      const queue = parsed.queue.filter((songId): songId is string => typeof songId === 'string' && songId.length > 0);
+      const durationsSeconds = parsed.durationsSeconds
+        .filter((seconds): seconds is number => Number.isFinite(seconds) && seconds > 0)
+        .map((seconds) => Math.floor(seconds));
+
+      if (queue.length === 0 || queue.length !== durationsSeconds.length) return null;
+
+      const session: StationSession = {
+        stationId,
+        startedAtMs: Math.floor(parsed.startedAtMs),
+        queue,
+        durationsSeconds,
+        version: Math.max(1, Math.floor(parsed.version)),
+      };
+      return session;
+    } catch {
+      return null;
+    }
+  }
+
+  async setStationSession(session: StationSession): Promise<void> {
+    await this.client.set(`station:${session.stationId}:session`, JSON.stringify(session));
+  }
+
+  async clearStationSession(stationId: string): Promise<void> {
+    await this.client.del(`station:${stationId}:session`);
+  }
+
+  /**
+   * Returns the version that the NEXT session for this station should start
+   * with. Defaults to 1 when never reset. Bumped by resetStationSession when
+   * the audience drains (count===0) or stale cleanup runs — survives session
+   * deletion so the new audience cannot see comments from the previous one.
+   */
+  async getNextStationVersion(stationId: string): Promise<number> {
+    const raw = await this.client.get(`station:${stationId}:nextVersion`);
+    if (!raw) return 1;
+    const parsed = parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed >= 1 ? parsed : 1;
+  }
+
+  /**
+   * Atomically resets a station: clears the playback session AND bumps the
+   * stored nextVersion to max(currentSession.version + 1, currentNextVersion).
+   * Idempotent — running it twice does not double-bump.
+   */
+  async resetStationSession(stationId: string): Promise<void> {
+    const [session, currentNext] = await Promise.all([
+      this.getStationSession(stationId),
+      this.getNextStationVersion(stationId),
+    ]);
+    const fromSession = (session?.version ?? 0) + 1;
+    const newNextVersion = Math.max(fromSession, currentNext);
+    await Promise.all([
+      this.client.set(`station:${stationId}:nextVersion`, String(newNextVersion)),
+      this.client.del(`station:${stationId}:session`),
+    ]);
+  }
+
+  async tryAcquireLock(lockKey: string, token: string, ttlMs: number): Promise<boolean> {
+    const result = await this.client.set(lockKey, token, 'PX', ttlMs, 'NX');
+    return result === 'OK';
+  }
+
+  async releaseLock(lockKey: string, token: string): Promise<void> {
+    await this.client.eval(LOCK_RELEASE_SCRIPT, 1, lockKey, token);
+  }
+
   // ── Notification Badges ───────────────────────────────────────────────────
 
   async incrementNotificationBadge(userId: string): Promise<number> {
@@ -162,6 +297,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
    * Returns the full list of matching keys.
    */
   async scanStationListenerKeys(): Promise<string[]> {
+    if (!this.client) {
+      this.logger.warn('Redis client not ready yet, skipping station listener scan');
+      return [];
+    }
+
     const keys: string[] = [];
     let cursor = '0';
 
@@ -178,6 +318,18 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     return keys;
   }
 
+  async getActiveStationIds(): Promise<string[]> {
+    const keys = await this.scanStationListenerKeys();
+    const ids = new Set<string>();
+    for (const key of keys) {
+      const parts = key.split(':');
+      if (parts.length === 3 && parts[0] === 'station' && parts[2] === 'listeners' && parts[1]) {
+        ids.add(parts[1]);
+      }
+    }
+    return Array.from(ids);
+  }
+
   /**
    * Removes stale members (score < now - 300s) from a station listener sorted set.
    * If the set is empty after pruning, deletes the key entirely.
@@ -192,6 +344,13 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     const remaining = await this.client.zcard(key);
     if (remaining === 0) {
       await this.client.del(key);
+      // Bump version + clear session in one shot — keeps stale-cleanup path
+      // aligned with the gateway's count===0 reset path. Also drops the
+      // recent-occupants set so the station is fully cold for the next visitor.
+      await Promise.all([
+        this.resetStationSession(stationId),
+        this.client.del(`station:${stationId}:recent`),
+      ]);
     }
 
     return remaining;

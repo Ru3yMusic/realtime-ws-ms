@@ -9,8 +9,8 @@ info:
     Event-driven WebSocket microservice for real-time station comments,
     user presence, and notification delivery.
 
-    **Authentication:** Pass `X-User-Id` in Socket.IO handshake headers
-    (forwarded by api-gateway from JWT claims).
+    **Authentication:** Pass JWT in Socket.IO handshake auth token
+    (`auth.token`, optionally Bearer-prefixed).
   contact:
     name: RubyMusic Team
     email: francolitobo@gmail.com
@@ -68,6 +68,15 @@ channels:
       pingPresenceMessage:
         $ref: '#/components/messages/EmptyMessage'
 
+  authRefresh:
+    address: auth_refresh
+    description: |
+      Refresh socket identity with a newly issued access token without dropping
+      the active socket session.
+    messages:
+      authRefreshMessage:
+        $ref: '#/components/messages/AuthRefreshMessage'
+
   # ── WebSocket: Server → Client ──────────────────────────────────────────
 
   newComment:
@@ -104,6 +113,13 @@ channels:
     messages:
       joinedStationPayload:
         $ref: '#/components/messages/JoinedStationPayload'
+
+  trackChanged:
+    address: track_changed
+    description: Broadcast to station room when the authoritative station timeline advances to the next track
+    messages:
+      trackChangedPayload:
+        $ref: '#/components/messages/TrackChangedPayload'
 
   # ── Kafka Topics ──────────────────────────────────────────────────────────
 
@@ -189,6 +205,15 @@ operations:
       - name: websocket
       - name: presence
 
+  onAuthRefresh:
+    action: receive
+    channel:
+      $ref: '#/channels/authRefresh'
+    messages:
+      - $ref: '#/channels/authRefresh/messages/authRefreshMessage'
+    tags:
+      - name: websocket
+
   # ── Server → Client ──────────────────────────────────────────────────────
 
   emitNewComment:
@@ -237,6 +262,15 @@ operations:
     tags:
       - name: websocket
 
+  emitTrackChanged:
+    action: send
+    channel:
+      $ref: '#/channels/trackChanged'
+    messages:
+      - $ref: '#/channels/trackChanged/messages/trackChangedPayload'
+    tags:
+      - name: websocket
+
   # ── Kafka: Produced ───────────────────────────────────────────────────────
 
   publishCommentCreated:
@@ -278,14 +312,24 @@ components:
       payload:
         title: JoinStationPayload
         type: object
-        required: [stationId, songId]
+        required: [stationId, tracks]
         properties:
           stationId:
             type: string
             format: uuid
-          songId:
-            type: string
-            format: uuid
+          tracks:
+            type: array
+            minItems: 1
+            items:
+              type: object
+              required: [songId, durationSeconds]
+              properties:
+                songId:
+                  type: string
+                  format: uuid
+                durationSeconds:
+                  type: integer
+                  minimum: 1
 
     EmptyMessage:
       name: EmptyMessage
@@ -294,6 +338,19 @@ components:
       payload:
         title: EmptyPayload
         type: object
+
+    AuthRefreshMessage:
+      name: AuthRefreshMessage
+      title: Auth Refresh
+      contentType: application/json
+      payload:
+        title: AuthRefreshPayload
+        type: object
+        required: [token]
+        properties:
+          token:
+            type: string
+            description: New JWT access token (raw or Bearer-prefixed)
 
     SendCommentMessage:
       name: SendCommentMessage
@@ -342,6 +399,7 @@ components:
           mentions:        { type: array, items: { type: string } }
           likesCount:      { type: integer, default: 0 }
           createdAt:       { type: string, format: date-time }
+          sessionVersion:  { type: integer, minimum: 1 }
 
     NotificationPayload:
       name: NotificationPayload
@@ -394,6 +452,24 @@ components:
         properties:
           stationId:     { type: string, format: uuid }
           listenerCount: { type: integer }
+          songId:        { type: string, format: uuid }
+          offsetSeconds: { type: integer, minimum: 0 }
+          serverTimeMs:  { type: integer }
+          sessionVersion: { type: integer, minimum: 1 }
+
+    TrackChangedPayload:
+      name: TrackChangedPayload
+      title: Track Changed Broadcast
+      contentType: application/json
+      payload:
+        title: WsTrackChangedPayload
+        type: object
+        properties:
+          stationId:      { type: string, format: uuid }
+          songId:         { type: string, format: uuid }
+          offsetSeconds:  { type: integer, minimum: 0 }
+          serverTimeMs:   { type: integer }
+          sessionVersion: { type: integer, minimum: 1 }
 
     # ── Avro messages: Multi Format Schema Object (3.0.0 syntax) ─────────────
     # schemaFormat goes INSIDE payload, actual schema goes under payload.schema

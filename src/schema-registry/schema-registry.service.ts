@@ -40,9 +40,23 @@ export class SchemaRegistryService implements OnModuleInit {
     if (!registryUrl) {
       this.logger.warn('SCHEMA_REGISTRY_URL not set — using local .avsc files (dev mode)');
       this.initDevCodecs();
-    } else {
-      this.logger.log(`Connecting to Schema Registry at ${registryUrl}`);
+      return;
+    }
+
+    this.logger.log(`Connecting to Schema Registry at ${registryUrl}`);
+    try {
       await this.initProdCodecs(registryUrl);
+    } catch (err) {
+      // Graceful degradation: if Schema Registry is slow/unreachable, do NOT
+      // block bootstrap — fall back to local .avsc codecs so the WebSocket
+      // server still accepts connections. Real-time eventing may emit raw
+      // Avro instead of Confluent wire format until the registry recovers.
+      this.logger.error(
+        `Schema Registry init failed (${(err as Error).message}) — falling back to local .avsc dev codecs`,
+        err as Error,
+      );
+      this.codecs.clear();
+      this.initDevCodecs();
     }
   }
 
@@ -125,8 +139,12 @@ export class SchemaRegistryService implements OnModuleInit {
     apiSecret?: string,
   ): Promise<number> {
     const url = `${registryUrl}/subjects/${subject}/versions`;
+    // 5 s timeout — without this, a hung Schema Registry blocks bootstrap
+    // indefinitely (the original "web freeze" smoking gun). Combined with
+    // the try/catch in onModuleInit, a slow registry now degrades gracefully.
     const response = await axios.post(url, { schema: JSON.stringify(schemaDef) }, {
       headers: { 'Content-Type': 'application/vnd.schemaregistry.v1+json' },
+      timeout: 5000,
       ...(apiKey ? { auth: { username: apiKey, password: apiSecret ?? '' } } : {}),
     });
     return response.data.id as number;

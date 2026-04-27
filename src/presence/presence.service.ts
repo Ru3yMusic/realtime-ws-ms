@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { RedisService } from '../redis/redis.service';
+import { RedisService, StationSession } from '../redis/redis.service';
 
 @Injectable()
 export class PresenceService {
@@ -13,15 +13,28 @@ export class PresenceService {
   }
 
   async leaveStation(userId: string, stationId: string): Promise<void> {
+    // Mark the user as a recent occupant BEFORE removing them from the active
+    // listeners set — and AWAIT the mark to land before the listener removal
+    // even starts. Running them in parallel was racy: if removeListener won
+    // the round-trip, a concurrent join handler could observe count===0 with
+    // isRecentOccupant=false and trigger an erroneous fresh-entry reset.
+    // With strict sequencing, any later isRecentOccupant call is guaranteed
+    // to see the recent mark, so reload always inherits the running session.
+    await this.redis.markRecentOccupant(stationId, userId);
     await Promise.all([
       this.redis.removePresence(userId),
       this.redis.removeStationListener(stationId, userId),
     ]);
   }
 
-  async refreshHeartbeat(userId: string, stationId: string, songId: string): Promise<void> {
+  async isRecentOccupant(stationId: string, userId: string, withinMs: number): Promise<boolean> {
+    return this.redis.isRecentOccupant(stationId, userId, withinMs);
+  }
+
+  async refreshHeartbeat(userId: string, stationId: string, songId?: string): Promise<void> {
+    const safeSongId = songId ?? '';
     await Promise.all([
-      this.redis.refreshPresenceTtl(userId),
+      this.redis.setPresence(userId, stationId, safeSongId),
       this.redis.addStationListener(stationId, userId), // refreshes ZADD score
     ]);
   }
@@ -36,6 +49,43 @@ export class PresenceService {
 
   async getListeners(stationId: string): Promise<string[]> {
     return this.redis.getActiveListeners(stationId);
+  }
+
+  async getActiveStationIds(): Promise<string[]> {
+    return this.redis.getActiveStationIds();
+  }
+
+  async getStationSession(stationId: string): Promise<StationSession | null> {
+    return this.redis.getStationSession(stationId);
+  }
+
+  async setStationSession(session: StationSession): Promise<void> {
+    await this.redis.setStationSession(session);
+  }
+
+  async clearStationSession(stationId: string): Promise<void> {
+    await this.redis.clearStationSession(stationId);
+  }
+
+  /**
+   * Atomically clears the station session AND bumps the stored nextVersion.
+   * Use this — not clearStationSession — when the audience has fully reset
+   * (count===0 or stale cleanup) so the next audience starts at a new version.
+   */
+  async resetStationSession(stationId: string): Promise<void> {
+    await this.redis.resetStationSession(stationId);
+  }
+
+  async getNextStationVersion(stationId: string): Promise<number> {
+    return this.redis.getNextStationVersion(stationId);
+  }
+
+  async tryAcquireLock(lockKey: string, token: string, ttlMs: number): Promise<boolean> {
+    return this.redis.tryAcquireLock(lockKey, token, ttlMs);
+  }
+
+  async releaseLock(lockKey: string, token: string): Promise<void> {
+    await this.redis.releaseLock(lockKey, token);
   }
 
   /**

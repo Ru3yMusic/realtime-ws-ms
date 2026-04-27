@@ -30,6 +30,7 @@ export interface CommentCreatedEvent {
   content:           string;
   mentions:          string[];
   timestamp:         number;           // epoch millis
+  session_version:   number;           // station session version at creation; bumped on count===0 reset
 }
 
 /** realtime.comment.liked — produced by ws-ms, consumed by api-ms */
@@ -98,6 +99,7 @@ export interface WsCommentPayload {
   mentions:        string[];
   likesCount:      number;
   createdAt:       string;
+  sessionVersion:  number;
 }
 
 /** Server → Client: notification push */

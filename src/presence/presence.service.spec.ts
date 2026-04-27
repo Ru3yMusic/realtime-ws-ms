@@ -6,11 +6,13 @@ describe('PresenceService', () => {
     addStationListener: jest.fn(),
     removePresence: jest.fn(),
     removeStationListener: jest.fn(),
-    refreshPresenceTtl: jest.fn(),
     getPresence: jest.fn(),
     getActiveListenerCount: jest.fn(),
     getActiveListeners: jest.fn(),
     getManyPresence: jest.fn(),
+    getStationSession: jest.fn(),
+    setStationSession: jest.fn(),
+    clearStationSession: jest.fn(),
   };
 
   let service: PresenceService;
@@ -41,12 +43,12 @@ describe('PresenceService', () => {
   });
 
   it('refreshHeartbeat refreshes ttl and listener score', async () => {
-    redis.refreshPresenceTtl.mockResolvedValue(undefined);
+    redis.setPresence.mockResolvedValue(undefined);
     redis.addStationListener.mockResolvedValue(undefined);
 
     await service.refreshHeartbeat('u1', 's1', 'song1');
 
-    expect(redis.refreshPresenceTtl).toHaveBeenCalledWith('u1');
+    expect(redis.setPresence).toHaveBeenCalledWith('u1', 's1', 'song1');
     expect(redis.addStationListener).toHaveBeenCalledWith('s1', 'u1');
   });
 
