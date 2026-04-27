@@ -101,7 +101,7 @@ export class MusicFeedConsumerService
           payload = JSON.parse(raw);
         } catch (err) {
           this.logger.warn(
-            `Discarded ${topic} payload (not JSON): ${raw.slice(0, 200)}`,
+            `Discarded ${topic} payload (not JSON): ${raw.slice(0, 200)} (${(err as Error).message})`,
           );
           return;
         }

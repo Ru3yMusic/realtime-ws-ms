@@ -198,7 +198,8 @@ export class StationGateway implements OnGatewayInit, OnGatewayConnection, OnGat
       this.broadcastUserPresenceChanged(userId, null, false);
     }
 
-    this.logger.debug(`Disconnected: ${userId}${reason ? ` reason=${reason}` : ''}`);
+    const reasonSuffix = reason ? ` reason=${reason}` : '';
+    this.logger.debug(`Disconnected: ${userId}${reasonSuffix}`);
   }
 
   @SubscribeMessage('auth_refresh')
@@ -542,7 +543,7 @@ export class StationGateway implements OnGatewayInit, OnGatewayConnection, OnGat
         if (!playback.songId) continue;
 
         const last = this.lastTrackByStation.get(stationId);
-        const changed = !last || last.songId !== playback.songId || last.version !== playback.version;
+        const changed = last?.songId !== playback.songId || last?.version !== playback.version;
         if (!changed) continue;
 
         this.lastTrackByStation.set(stationId, { songId: playback.songId, version: playback.version });

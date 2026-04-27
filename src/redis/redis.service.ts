@@ -170,7 +170,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     const key = `station:${stationId}:recent`;
     const raw = await this.client.zscore(key, userId);
     if (!raw) return false;
-    const score = parseInt(raw, 10);
+    const score = Number.parseInt(raw, 10);
     if (!Number.isFinite(score)) return false;
     return score >= Date.now() - withinMs;
   }
@@ -230,7 +230,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   async getNextStationVersion(stationId: string): Promise<number> {
     const raw = await this.client.get(`station:${stationId}:nextVersion`);
     if (!raw) return 1;
-    const parsed = parseInt(raw, 10);
+    const parsed = Number.parseInt(raw, 10);
     return Number.isFinite(parsed) && parsed >= 1 ? parsed : 1;
   }
 
@@ -269,7 +269,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   async getNotificationBadge(userId: string): Promise<number> {
     const val = await this.client.get(`badge:notifications:${userId}`);
-    return val ? parseInt(val, 10) : 0;
+    return val ? Number.parseInt(val, 10) : 0;
   }
 
   async clearNotificationBadge(userId: string): Promise<void> {
@@ -282,7 +282,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   async getFriendBadge(userId: string): Promise<number> {
     const val = await this.client.get(`badge:friends:${userId}`);
-    return val ? parseInt(val, 10) : 0;
+    return val ? Number.parseInt(val, 10) : 0;
   }
 
   async clearFriendBadge(userId: string): Promise<void> {

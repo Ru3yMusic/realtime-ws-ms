@@ -31,10 +31,9 @@ export class PresenceService {
     return this.redis.isRecentOccupant(stationId, userId, withinMs);
   }
 
-  async refreshHeartbeat(userId: string, stationId: string, songId?: string): Promise<void> {
-    const safeSongId = songId ?? '';
+  async refreshHeartbeat(userId: string, stationId: string, songId = ''): Promise<void> {
     await Promise.all([
-      this.redis.setPresence(userId, stationId, safeSongId),
+      this.redis.setPresence(userId, stationId, songId),
       this.redis.addStationListener(stationId, userId), // refreshes ZADD score
     ]);
   }

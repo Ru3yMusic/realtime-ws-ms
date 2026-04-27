@@ -76,7 +76,7 @@ export class RedisIoAdapter extends IoAdapter {
       connectTimeout: Number(process.env.SOCKET_IO_CONNECT_TIMEOUT_MS) || 45_000,
       maxHttpBufferSize: Number(process.env.SOCKET_IO_MAX_BUFFER_BYTES) || 1_000_000,
     };
-    const merged = { ...tunedDefaults, ...(options ?? {}) } as ServerOptions;
+    const merged = { ...tunedDefaults, ...options } as ServerOptions;
     const server = super.createIOServer(port, merged);
     server.adapter(this.adapterConstructor);
     return server;
