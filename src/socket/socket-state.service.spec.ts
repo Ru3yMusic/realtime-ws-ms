@@ -94,4 +94,50 @@ describe('SocketStateService', () => {
     expect(socket.emit).not.toHaveBeenCalled();
     expect(server.to).toHaveBeenCalledWith('user:user-1');
   });
+
+  // ── emitToStation ─────────────────────────────────────────────────────────
+
+  it('emitToStation emits to room station:{stationId} when server is set', () => {
+    const server = makeServer();
+    service.setServer(server as unknown as Server);
+
+    service.emitToStation('s-99', 'comment.created', { id: 'c-1' });
+
+    expect(server.to).toHaveBeenCalledWith('station:s-99');
+    expect(server.to('station:s-99').emit).toHaveBeenCalledWith('comment.created', { id: 'c-1' });
+  });
+
+  it('emitToStation drops event silently with warning when server is not set', () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    expect(() => service.emitToStation('s-99', 'comment.created', {})).not.toThrow();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('server not initialised'));
+
+    warnSpy.mockRestore();
+  });
+
+  // ── broadcastAll ──────────────────────────────────────────────────────────
+
+  it('broadcastAll emits to every connected socket via server.emit', () => {
+    const server = makeServer();
+    service.setServer(server as unknown as Server);
+
+    service.broadcastAll('artist_followers_changed', { artistId: 'a-1', delta: 1 });
+
+    expect(server.emit).toHaveBeenCalledWith(
+      'artist_followers_changed',
+      { artistId: 'a-1', delta: 1 },
+    );
+    // No room targeting on broadcastAll
+    expect(server.to).not.toHaveBeenCalled();
+  });
+
+  it('broadcastAll drops event silently with warning when server is not set', () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    expect(() => service.broadcastAll('global_event', {})).not.toThrow();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('server not initialised'));
+
+    warnSpy.mockRestore();
+  });
 });
